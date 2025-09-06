@@ -407,3 +407,4 @@ generate_mcp_yaml.py
 .vscode
 *instructions.md
 BLANK_README.md
+website/.vitepress/cache
