@@ -1,25 +1,22 @@
 ---
-# https://vitepress.dev/reference/default-theme-home-page
-layout: home
-
-hero:
-  name: "Cloudflare Smart Cache"
-  text: "Documentation"
-  tagline: My great project tagline
-  actions:
-    - theme: brand
-      text: Markdown Examples
-      link: /markdown-examples
-    - theme: alt
-      text: API Examples
-      link: /api-examples
-
-features:
-  - title: Feature A
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature B
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
-  - title: Feature C
-    details: Lorem ipsum dolor sit amet, consectetur adipiscing elit
+title: "Cloudflare Smart Cache Documentation"
+description: "Accelerate your WordPress site with advanced Cloudflare edge caching, security, and admin controls. Learn features, installation, usage, and support."
 ---
 
+# Cloudflare Smart Cache
+
+**Tagline:** Accelerate your WordPress site with advanced Cloudflare edge caching, security, and admin controls.
+
+Welcome to the Cloudflare Smart Cache plugin documentation.
+
+## Quick Links
+
+- [Features](./features.md "Explore plugin features")
+- [Installation](./installation.md "Installation guide")
+- [Usage](./usage.md "How to use the plugin")
+- [FAQ](./faq.md "Frequently asked questions")
+- [Contact](./contact.md "Contact and support")
+
+## Introduction
+
+Cloudflare Smart Cache is a WordPress plugin designed to optimize site performance and security by leveraging Cloudflare's edge caching and API capabilities. It provides robust cache management, enhanced security headers, admin toolbar integration, and developer hooks for advanced customization.

@@ -3,26 +3,23 @@ import { defineConfig } from 'vitepress'
 // https://vitepress.dev/reference/site-config
 export default defineConfig({
   title: "Cloudflare Smart Cache",
-  description: "Documentation",
+  description: "Cloudflare Smart Cache documentation and guides for installation, features, usage, FAQ, and contact.",
+  lang: "en-US",
   themeConfig: {
-    // https://vitepress.dev/reference/default-theme-config
     nav: [
       { text: 'Home', link: '/' },
-      { text: 'Examples', link: '/markdown-examples' }
+      { text: 'Features', link: '/features' },
+      { text: 'Installation', link: '/installation' },
+      { text: 'Usage', link: '/usage' },
+      { text: 'FAQ', link: '/faq' },
+      { text: 'Contact', link: '/contact' }
     ],
 
-    sidebar: [
-      {
-        text: 'Examples',
-        items: [
-          { text: 'Markdown Examples', link: '/markdown-examples' },
-          { text: 'Runtime API Examples', link: '/api-examples' }
-        ]
-      }
-    ],
+    // Sidebar intentionally omitted for clarity; all navigation is in the top nav.
 
     socialLinks: [
-      { icon: 'github', link: 'https://github.com/vuejs/vitepress' }
+      { icon: 'github', link: 'https://github.com/LoveDoLove/cloudflare-smart-cache' }
     ]
+    // Dark mode is enabled by default in Vitepress.
   }
 })
