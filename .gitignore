@@ -408,3 +408,4 @@ generate_mcp_yaml.py
 *instructions.md
 BLANK_README.md
 website/.vitepress/cache
+website/.vitepress/dist
