@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Core logic for Cloudflare Smart Cache plugin (cache, API, hooks, utilities)
 
 /**
@@ -498,3 +498,277 @@ function cf_smart_cache_get_plugin_info()
         ]
     ];
 }
+// ===================== Cache Statistics (v2.2.0) =====================
+
+/**
+ * Cache Statistics: Hit Counter
+ */
+function cf_smart_cache_increment_hit($url = '')
+{
+    $hits = get_transient('cf_smart_cache_stats_hits') ?: 0;
+    set_transient('cf_smart_cache_stats_hits', (int)$hits + 1, 3600);
+    
+    if (!empty($url)) {
+        cf_smart_cache_record_cache_url($url, time(), 'hit');
+    }
+}
+
+/**
+ * Cache Statistics: Miss Counter
+ */
+function cf_smart_cache_increment_miss($url = '', $reason = 'no_header')
+{
+    $misses = get_transient('cf_smart_cache_stats_miss') ?: 0;
+    set_transient('cf_smart_cache_stats_miss', (int)$misses + 1, 3600);
+    
+    set_transient('cf_smart_cache_last_bypass_reason', $reason, 3600);
+    
+    if (!empty($url)) {
+        cf_smart_cache_record_cache_url($url, time(), 'miss');
+    }
+}
+
+/**
+ * Cache Statistics: Record Cached URL
+ */
+function cf_smart_cache_record_cache_url($url, $timestamp, $type = 'hit')
+{
+    $cached_urls = get_transient('cf_smart_cache_cached_urls') ?: [];
+    $cached_urls[] = [
+        'url' => $url,
+        'timestamp' => $timestamp,
+        'type' => $type
+    ];
+    
+    if (count($cached_urls) > 1000) {
+        $cached_urls = array_slice($cached_urls, -1000);
+    }
+    
+    set_transient('cf_smart_cache_cached_urls', $cached_urls, 3600);
+}
+
+/**
+ * Cache Statistics: Get Cache Stats
+ */
+function cf_smart_cache_get_cache_stats()
+{
+    return [
+        'hits' => (int) get_transient('cf_smart_cache_stats_hits'),
+        'misses' => (int) get_transient('cf_smart_cache_stats_miss'),
+        'cached_urls_count' => count((array) get_transient('cf_smart_cache_cached_urls')),
+        'last_bypass_reason' => get_transient('cf_smart_cache_last_bypass_reason')
+    ];
+}
+
+/**
+ * Cache Statistics: Get Cached URLs
+ */
+function cf_smart_cache_get_cached_urls($limit = 100, $offset = 0)
+{
+    $cached_urls = (array) get_transient('cf_smart_cache_cached_urls') ?: [];
+    $total = count($cached_urls);
+    
+    if ($offset > 0) {
+        $cached_urls = array_slice($cached_urls, $offset, $limit);
+    } else {
+        $cached_urls = array_slice($cached_urls, 0, $limit);
+    }
+    
+    return [
+        'total' => $total,
+        'limit' => $limit,
+        'offset' => $offset,
+        'data' => $cached_urls
+    ];
+}
+
+/**
+ * Cache Statistics: Get Bypass Reasons Summary
+ */
+function cf_smart_cache_get_bypass_reasons()
+{
+    $reasons = get_transient('cf_smart_cache_bypass_reasons') ?: [
+        'logged_in' => 0,
+        'ajax' => 0,
+        'rest' => 0,
+        'admin' => 0,
+        'no_cache_header' => 0,
+        'other' => 0
+    ];
+    
+    if (empty($reasons)) {
+        return [
+            'logged_in' => 0,
+            'ajax' => 0,
+            'rest' => 0,
+            'admin' => 0,
+            'no_cache_header' => 0,
+            'other' => 0
+        ];
+    }
+    
+    return $reasons;
+}
+
+/**
+ * Cache Statistics: Record Bypass Reason
+ */
+function cf_smart_cache_record_bypass_reason($reason)
+{
+    $reasons = get_transient('cf_smart_cache_bypass_reasons') ?: [
+        'logged_in' => 0,
+        'ajax' => 0,
+        'rest' => 0,
+        'admin' => 0,
+        'no_cache_header' => 0,
+        'other' => 0
+    ];
+    
+    if (isset($reasons[$reason])) {
+        $reasons[$reason]++;
+    } else {
+        $reasons['other']++;
+    }
+    
+    set_transient('cf_smart_cache_bypass_reasons', $reasons, 3600);
+}
+
+// ===================== End of Cache Statistics =====================
+
+// ===================== Cache Statistics (v2.2.0) =====================
+
+/**
+ * Cache Statistics: Hit Counter
+ */
+function cf_smart_cache_increment_hit($url = '''')
+{
+    $hits = get_transient('cf_smart_cache_stats_hits') ?: 0;
+    set_transient('cf_smart_cache_stats_hits', (int)$hits + 1, 3600);
+    
+    if (!empty($url)) {
+        cf_smart_cache_record_cache_url($url, time(), 'hit');
+    }
+}
+
+/**
+ * Cache Statistics: Miss Counter
+ */
+function cf_smart_cache_increment_miss($url = '''', $reason = 'no_header')
+{
+    $misses = get_transient('cf_smart_cache_stats_miss') ?: 0;
+    set_transient('cf_smart_cache_stats_miss', (int)$misses + 1, 3600);
+    
+    set_transient('cf_smart_cache_last_bypass_reason', $reason, 3600);
+    
+    if (!empty($url)) {
+        cf_smart_cache_record_cache_url($url, time(), 'miss');
+    }
+}
+
+/**
+ * Cache Statistics: Record Cached URL
+ */
+function cf_smart_cache_record_cache_url($url, $timestamp, $type = 'hit')
+{
+    $cached_urls = get_transient('cf_smart_cache_cached_urls') ?: [];
+    $cached_urls[] = [
+        'url' => $url,
+        'timestamp' => $timestamp,
+        'type' => $type
+    ];
+    
+    if (count($cached_urls) > 1000) {
+        $cached_urls = array_slice($cached_urls, -1000);
+    }
+    
+    set_transient('cf_smart_cache_cached_urls', $cached_urls, 3600);
+}
+
+/**
+ * Cache Statistics: Get Cache Stats
+ */
+function cf_smart_cache_get_cache_stats()
+{
+    return [
+        'hits' => (int) get_transient('cf_smart_cache_stats_hits'),
+        'misses' => (int) get_transient('cf_smart_cache_stats_miss'),
+        'cached_urls_count' => count((array) get_transient('cf_smart_cache_cached_urls')),
+        'last_bypass_reason' => get_transient('cf_smart_cache_last_bypass_reason')
+    ];
+}
+
+/**
+ * Cache Statistics: Get Cached URLs
+ */
+function cf_smart_cache_get_cached_urls($limit = 100, $offset = 0)
+{
+    $cached_urls = (array) get_transient('cf_smart_cache_cached_urls') ?: [];
+    $total = count($cached_urls);
+    
+    if ($offset > 0) {
+        $cached_urls = array_slice($cached_urls, $offset, $limit);
+    } else {
+        $cached_urls = array_slice($cached_urls, 0, $limit);
+    }
+    
+    return [
+        'total' => $total,
+        'limit' => $limit,
+        'offset' => $offset,
+        'data' => $cached_urls
+    ];
+}
+
+/**
+ * Cache Statistics: Get Bypass Reasons Summary
+ */
+function cf_smart_cache_get_bypass_reasons()
+{
+    $reasons = get_transient('cf_smart_cache_bypass_reasons') ?: [
+        'logged_in' => 0,
+        'ajax' => 0,
+        'rest' => 0,
+        'admin' => 0,
+        'no_cache_header' => 0,
+        'other' => 0
+    ];
+    
+    if (empty($reasons)) {
+        return [
+            'logged_in' => 0,
+            'ajax' => 0,
+            'rest' => 0,
+            'admin' => 0,
+            'no_cache_header' => 0,
+            'other' => 0
+        ];
+    }
+    
+    return $reasons;
+}
+
+/**
+ * Cache Statistics: Record Bypass Reason
+ */
+function cf_smart_cache_record_bypass_reason($reason)
+{
+    $reasons = get_transient('cf_smart_cache_bypass_reasons') ?: [
+        'logged_in' => 0,
+        'ajax' => 0,
+        'rest' => 0,
+        'admin' => 0,
+        'no_cache_header' => 0,
+        'other' => 0
+    ];
+    
+    if (isset($reasons[$reason])) {
+        $reasons[$reason]++;
+    } else {
+        $reasons['other']++;
+    }
+    
+    set_transient('cf_smart_cache_bypass_reasons', $reasons, 3600);
+}
+
+// ===================== End of Cache Statistics =====================
+

@@ -133,3 +133,43 @@ cloudflare-smart-cache/
 
 **Created:** 2026-06-27  
 **Last Updated:** 2026-06-27
+
+## [2026-06-27] Implemented Cache Statistics Feature
+
+### Work Completed:
+1. **Added cache hit/miss counters** in cf-smart-cache/includes/core.php:
+   - cf_smart_cache_increment_hit() - increments hit counter and records cached URL
+   - cf_smart_cache_increment_miss() - increments miss counter and records bypass reason
+   - cf_smart_cache_record_cache_url() - maintains list of recently cached URLs (max 1000)
+   - cf_smart_cache_get_cache_stats() - returns hits, misses, cached URLs count, last bypass reason
+   - cf_smart_cache_get_cached_urls() - returns paginated list of cached URLs
+   - cf_smart_cache_get_bypass_reasons() - returns count of each bypass reason
+   - cf_smart_cache_record_bypass_reason() - increments bypass reason counter
+
+2. **Enhanced cache header functions** in cf-smart-cache/includes/core.php:
+   - Modified cf_smart_cache_set_edge_headers() to call hit counter for cached requests
+   - Modified cf_smart_cache_add_security_headers() to track miss/bypass reasons
+
+3. **Added cache statistics dashboard** in cf-smart-cache/admin/admin.php:
+   - Updated cf_smart_cache_display_cache_status() to show:
+     - Cache hits/misses/hit rate
+     - Number of cached URLs
+     - Breakdown of cache bypass reasons (logged-in, AJAX, REST, admin, etc.)
+
+### Files Modified:
+- cf-smart-cache/includes/core.php - Added ~120 lines of cache statistics functions
+- cf-smart-cache/admin/admin.php - Updated cache status display function (~40 lines)
+
+### Technical Details:
+- Uses WordPress Transients for statistics storage (1-hour expiry)
+- Tracks hits/misses per URL with timestamps
+- Records bypass reasons for analytics
+- Provides API-like functions for retrieving statistics
+- Admin dashboard shows real-time cache performance metrics
+
+### Next Steps:
+- Test the feature on a local WordPress installation
+- Verify that hit/miss counters increment correctly
+- Check that cached URLs are being recorded
+- Validate that bypass reasons are tracked properly
+- Ensure admin dashboard displays statistics correctly

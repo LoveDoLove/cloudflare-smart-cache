@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Admin-specific code for Cloudflare Smart Cache plugin (settings page, admin menu, admin UI, admin hooks)
 
 /**
@@ -316,32 +316,7 @@ function cf_smart_cache_purge_all_cache()
 /**
  * Display cache status in admin UI
  */
-function cf_smart_cache_display_cache_status()
-{
-    $settings = get_option('cf_smart_cache_settings', []);
-    $zone_id  = isset($settings['cf_smart_cache_zone_id']) ? $settings['cf_smart_cache_zone_id'] : '';
-    echo '<div class="cf-cache-status">';
-    if (empty($zone_id)) {
-        printf(
-            '<p><span class="dashicons dashicons-warning" style="color: #f56e28;"></span> %s</p>',
-            esc_html__('Please configure your Cloudflare API credentials and select a zone.', 'cf-smart-cache')
-        );
-    } else {
-        printf(
-            '<p><span class="dashicons dashicons-yes-alt" style="color: #00a32a;"></span> %s <code>%s</code></p>',
-            esc_html__('Cloudflare Smart Cache is active for zone:', 'cf-smart-cache'),
-            esc_html($zone_id)
-        );
-        $rate_limit_key = 'cf_smart_cache_rate_limit';
-        $requests_count = get_transient($rate_limit_key) ?: 0;
-        printf(
-            '<p>%s %d/1000</p>',
-            esc_html__('API requests in last 5 minutes:', 'cf-smart-cache'),
-            absint($requests_count)
-        );
-    }
-    echo '</div>';
-}
+
 
 /**
  * Admin toolbar integration
@@ -452,3 +427,4 @@ add_action('admin_notices', function ()
         echo '<div class="notice notice-error"><p><strong>Cloudflare Smart Cache:</strong> ' . esc_html__('Cloudflare Zone ID is missing. Please select a zone in the plugin settings.', 'cf-smart-cache') . '</p></div>';
     }
 });
+
