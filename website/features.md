@@ -1,4 +1,4 @@
----
+﻿---
 title: "Cloudflare Smart Cache Features"
 description: "Discover the features of Cloudflare Smart Cache for WordPress: security, performance, admin controls, developer tools."
 ---
@@ -16,6 +16,7 @@ Cloudflare Smart Cache offers a comprehensive set of features to enhance WordPre
 - **Multi Post Type Support:** Supports posts, pages, and custom post types.
 - **Admin Toolbar Integration:** Displays cache status and provides quick access to cache controls.
 - **Performance Analytics:** Tracks and displays cache performance metrics.
+- **Cache Statistics Dashboard:** Displays cache hits, misses, hit ratio, cached URLs, and bypass reasons in the admin settings.
 - **Advanced Error Handling:** Logs and displays errors for troubleshooting.
 - **Developer Hooks:** Extensible hooks for custom cache logic and integrations.
 - **REST API Caching:** Caches REST API responses for improved speed.
@@ -35,3 +36,4 @@ Cloudflare Smart Cache offers a comprehensive set of features to enhance WordPre
 
 - Action and filter hooks for advanced customization.
 - Logging for debugging and monitoring.
+" - **Cache Statistics Dashboard:** Shows real-time cache hits misses hit-ratio cached URLs and bypass "reasons. 
