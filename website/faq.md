@@ -30,6 +30,25 @@ Find answers to common questions about Cloudflare Smart Cache.
 
 - Yes, REST API responses are cached for improved performance.
 
+## What is the Cache Statistics Dashboard (v2.2.0)?
+
+The Cache Statistics Dashboard is a new panel on the **Settings > CF Smart Cache** page that visualises how your edge cache is performing. It shows:
+
+- Cache hits and misses over the last hour
+- The hit rate, colour-coded so a healthy ratio (>= 70%) stands out
+- A breakdown of cache bypass reasons (logged-in users, admin pages, AJAX, REST API, preview, password-protected, WooCommerce)
+- A list of the most recent URLs that were served from cache
+
+No configuration is required — the panel is populated automatically as the plugin handles requests.
+
+## How long are cache statistics stored?
+
+All counters are kept in WordPress transients with a one-hour TTL. They reset automatically every hour and do not contribute to the `wp_options` table long term.
+
+## Does the Cache Statistics Dashboard slow down my site?
+
+No. The dashboard reads from transients and only updates counters on the request that triggered them. There is no extra API call, no JavaScript bundle, and no third-party dependency.
+
 ## How do I get support or report issues?
 
 - See the [Contact](./contact.md "Contact and support channels") page for support channels.

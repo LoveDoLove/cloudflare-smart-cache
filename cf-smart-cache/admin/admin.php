@@ -316,6 +316,104 @@ function cf_smart_cache_purge_all_cache()
 /**
  * Display cache status in admin UI
  */
+function cf_smart_cache_display_cache_status()
+{
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    $stats      = cf_smart_cache_get_cache_stats();
+    $urls       = cf_smart_cache_get_cached_urls( 10 );
+    $reasons    = cf_smart_cache_get_bypass_reasons();
+    $settings   = get_option( 'cf_smart_cache_settings', array() );
+    $api_token  = $settings['cf_smart_cache_api_token'] ?? '';
+    $zone_id    = $settings['cf_smart_cache_zone_id'] ?? '';
+    $hit_color  = $stats['hit_rate'] >= 70 ? '#46b450' : ( $stats['hit_rate'] >= 40 ? '#ffb900' : '#dc3232' );
+
+    echo '<div class="cf-cache-status">';
+
+    // Configuration status
+    echo '<table class="widefat striped" style="max-width:720px;"><tbody>';
+    printf(
+        '<tr><th style="width:240px;">%1$s</th><td>%2$s</td></tr>',
+        esc_html__( 'API Token', 'cf-smart-cache' ),
+        ! empty( $api_token ) ? '<span style="color:#46b450;">&#10004; ' . esc_html__( 'Configured', 'cf-smart-cache' ) . '</span>' : '<span style="color:#dc3232;">&#10006; ' . esc_html__( 'Missing', 'cf-smart-cache' ) . '</span>'
+    );
+    printf(
+        '<tr><th>%1$s</th><td>%2$s</td></tr>',
+        esc_html__( 'Zone ID', 'cf-smart-cache' ),
+        ! empty( $zone_id ) ? '<span style="color:#46b450;">&#10004; ' . esc_html__( 'Configured', 'cf-smart-cache' ) . '</span>' : '<span style="color:#dc3232;">&#10006; ' . esc_html__( 'Missing', 'cf-smart-cache' ) . '</span>'
+    );
+    echo '</tbody></table>';
+
+    // Performance metrics
+    echo '<h3>' . esc_html__( 'Cache Performance (last hour)', 'cf-smart-cache' ) . '</h3>';
+    echo '<table class="widefat striped" style="max-width:720px;"><tbody>';
+    printf(
+        '<tr><th style="width:240px;">%1$s</th><td><strong>%2$d</strong></td></tr>',
+        esc_html__( 'Cache Hits', 'cf-smart-cache' ),
+        (int) $stats['hits']
+    );
+    printf(
+        '<tr><th>%1$s</th><td><strong>%2$d</strong></td></tr>',
+        esc_html__( 'Cache Misses', 'cf-smart-cache' ),
+        (int) $stats['misses']
+    );
+    printf(
+        '<tr><th>%1$s</th><td><strong style="color:%2$s;">%3$s%%</strong> (%4$d %5$s)</td></tr>',
+        esc_html__( 'Hit Rate', 'cf-smart-cache' ),
+        esc_attr( $hit_color ),
+        esc_html( $stats['hit_rate'] ),
+        (int) $stats['total'],
+        esc_html__( 'requests', 'cf-smart-cache' )
+    );
+    printf(
+        '<tr><th>%1$s</th><td><strong>%2$d</strong> / 1000</td></tr>',
+        esc_html__( 'Cached URLs Tracked', 'cf-smart-cache' ),
+        (int) $stats['cached_urls_count']
+    );
+    if ( ! empty( $stats['last_bypass_reason'] ) ) {
+        printf(
+            '<tr><th>%1$s</th><td><code>%2$s</code></td></tr>',
+            esc_html__( 'Last Bypass Reason', 'cf-smart-cache' ),
+            esc_html( $stats['last_bypass_reason'] )
+        );
+    }
+    echo '</tbody></table>';
+
+    // Bypass reasons breakdown
+    if ( ! empty( $reasons ) ) {
+        echo '<h3>' . esc_html__( 'Bypass Reasons', 'cf-smart-cache' ) . '</h3>';
+        echo '<table class="widefat striped" style="max-width:720px;"><thead><tr><th>' . esc_html__( 'Reason', 'cf-smart-cache' ) . '</th><th>' . esc_html__( 'Count', 'cf-smart-cache' ) . '</th></tr></thead><tbody>';
+        foreach ( $reasons as $reason => $count ) {
+            printf(
+                '<tr><td><code>%1$s</code></td><td>%2$d</td></tr>',
+                esc_html( $reason ),
+                (int) $count
+            );
+        }
+        echo '</tbody></table>';
+    } else {
+        echo '<p>' . esc_html__( 'No bypass events recorded yet.', 'cf-smart-cache' ) . '</p>';
+    }
+
+    // Recent cached URLs
+    if ( ! empty( $urls ) ) {
+        echo '<h3>' . esc_html__( 'Recent Cached URLs', 'cf-smart-cache' ) . '</h3>';
+        echo '<table class="widefat striped" style="max-width:720px;"><thead><tr><th>' . esc_html__( 'URL', 'cf-smart-cache' ) . '</th><th>' . esc_html__( 'Time', 'cf-smart-cache' ) . '</th></tr></thead><tbody>';
+        foreach ( $urls as $entry ) {
+            printf(
+                '<tr><td><code style="word-break:break-all;">%1$s</code></td><td>%2$s</td></tr>',
+                esc_html( $entry['url'] ),
+                esc_html( date_i18n( 'Y-m-d H:i:s', $entry['timestamp'] ) )
+            );
+        }
+        echo '</tbody></table>';
+    } else {
+        echo '<p>' . esc_html__( 'No cached URLs recorded yet.', 'cf-smart-cache' ) . '</p>';
+    }
+
+    echo '</div>';
+}
 
 
 /**

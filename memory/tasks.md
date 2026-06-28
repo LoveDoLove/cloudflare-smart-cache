@@ -57,6 +57,18 @@
 
 ---
 
+
+### [2026-06-28] 修復 Fatal Error 並補完 Cache Statistics 功能
+- **完成內容**：
+  - 修復 admin.php 缺少 `cf_smart_cache_display_cache_status()` 造成的 Fatal Error
+  - 在 core.php 新增 Cache Statistics 函數家族（hit/miss 計數器、URL 記錄、bypass reason、stats getter）
+  - 在 `cf_smart_cache_set_edge_headers()` 每個分支掛上 bypass/hit 計數
+  - 在 admin.php 完整實作 `cf_smart_cache_display_cache_status()`（API/Zone 狀態、Performance、Bypass Reasons、Recent Cached URLs）
+- **影響文件**：
+  - cf-smart-cache/includes/core.php（+約 130 行統計函數、修訂 set_edge_headers）
+  - cf-smart-cache/admin/admin.php（補上 display_cache_status 實作，約 75 行）
+- **驗證**：php -l 兩檔皆無語法錯誤
+- **待辦**：下次實際在 WordPress 後台驗證頁面渲染、計數遞增、bypass reason 觸發
 ## [完成 - Completed]
 
 ### [2026-06-27] 初始化 MEMORY.md 和 AGENTS.md
@@ -110,5 +122,5 @@
 
 ---
 
-**最後更新**：2026-06-27  
-**下次檢查**：2026-06-28
+**最後更新**：2026-06-28
+**下次檢查**：2026-06-29

@@ -28,7 +28,7 @@
 **類型**：WordPress 插件 + 邊緣緩存解決方案  
 **開發者**：LoveDoLove  
 **授權**：MIT License  
-**目前版本**：2.1.0
+**目前版本**：2.2.0
 
 這是一個功能齊全的 WordPress 插件，整合了 Cloudflare 邊緣緩存和自動清除功能，包括：
 
@@ -222,6 +222,61 @@ cloudflare-smart-cache/
 - **可測試性**：定義清晰的輸入輸出
 - **文檔完善**：重要的函數和類別都應有註釋
 - **命名清晰**：變數和函數名應直觀表達用途
+
+---
+
+## 緩存統計功能（v2.2.0 新增）
+
+`cf-smart-cache/admin/admin.php` 內的 `cf_smart_cache_display_cache_status()` 會在 Settings > CF Smart Cache 頁面渲染以下資訊：
+
+| 區塊 | 內容 | 資料來源 |
+|------|------|---------|
+| Configuration | API Token / Zone ID 配置狀態（✔/✘） | `get_option('cf_smart_cache_settings')` |
+| Cache Performance | Hits、Misses、Hit Rate、Cached URLs Tracked、Last Bypass Reason | `cf_smart_cache_get_cache_stats()` |
+| Bypass Reasons | 7 種原因計數表（降冪排序） | `cf_smart_cache_get_bypass_reasons()` |
+| Recent Cached URLs | 最近 10 筆被快取的 URL | `cf_smart_cache_get_cached_urls(10)` |
+
+### 核心函數（core.php）
+
+| 函數 | 用途 |
+|------|------|
+| `cf_smart_cache_stats_keys()` | 集中管理 5 個 transient key |
+| `cf_smart_cache_increment_hit($url)` | 累加命中計數 + 記錄 URL |
+| `cf_smart_cache_increment_miss($reason)` | 累加未命中 + 記錄 bypass 原因 |
+| `cf_smart_cache_record_cache_url($url, $ts)` | 維護最多 1000 筆的 rolling URL 清單 |
+| `cf_smart_cache_record_bypass_reason($reason)` | 累加單一 bypass 原因計數 |
+| `cf_smart_cache_get_cache_stats()` | 回傳完整統計陣列 |
+| `cf_smart_cache_get_cached_urls($limit, $offset)` | 分頁回傳最新 URL |
+| `cf_smart_cache_get_bypass_reasons()` | 降冪排序的 bypass 原因計數 |
+
+### 計數觸發點（`cf_smart_cache_set_edge_headers()`）
+
+- **Bypass 分支**（7 種）→ `cf_smart_cache_record_bypass_reason($reason)`
+  - logged-in / admin / ajax / rest / preview / password / woocommerce
+- **Cacheable 分支** → `cf_smart_cache_increment_hit(home_url(...))`
+
+### Transient 命名空間
+
+| Key | 用途 | TTL |
+|-----|------|-----|
+| `cf_smart_cache_stats_hits` | 命中計數 | 1 小時 |
+| `cf_smart_cache_stats_miss` | 未命中計數 | 1 小時 |
+| `cf_smart_cache_cached_urls` | 最近 1000 個 URL | 1 小時 |
+| `cf_smart_cache_bypass_reasons` | 各原因計數 | 1 小時 |
+| `cf_smart_cache_last_bypass_reason` | 最近一次原因 | 1 小時 |
+
+### 設計決策
+
+- **Hit Rate 色彩門檻**：≥70% 綠 / ≥40% 黃 / <40% 紅
+- **Bypass 與 Misses 分離**：bypass 走 `record_bypass_reason()`（不重複計入 Misses），Misses 保留供未來 REST 端點呼叫
+- **URL 1000 筆上限**：超過自動 `array_slice(-1000)`
+- **零外部依賴**：admin 儀表板只用 HTML 表格，不引入 Chart.js
+
+### 已知陷阱（昨日學到的教訓）
+
+> ⚠️ **昨日 (2026-06-27) 的「Cache Statistics 功能」只有設計文檔，無實質代碼**。未來工作日誌必須明確區分「設計」與「實作完成」。
+
+> ⚠️ **函數命名對齊**：設計文檔寫 `cf_smart_cache_record_bypass()`，實作採用 `cf_smart_cache_record_bypass_reason()`。所有呼叫點必須與定義一致。
 
 ---
 
@@ -432,6 +487,13 @@ if (is_user_logged_in()) {
 
 ---
 
-**最後更新**：2026-06-27  
-**版本**：2.1.0
+**最後更新**：2026-06-28  
+**版本**：2.2.0
 " - 2026-06-27: 实现了缓存统计功能（命中/未命中计数器、已缓存 URL "列表、绕过原因追踪、管理员统计仪表盘）。 
+
+---
+
+## 變更日誌
+
+- **2.2.0** (2026-06-28) — 緩存統計功能 (Cache Statistics Dashboard)、修復 cf_smart_cache_display_cache_status undefined fatal error、修正函數命名對齊
+- **2.1.0** (2025-09) — 初版釋出、VitePress 文檔網站

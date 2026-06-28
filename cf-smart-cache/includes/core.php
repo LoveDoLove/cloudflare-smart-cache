@@ -139,6 +139,7 @@ function cf_smart_cache_set_edge_headers()
 {
     if (is_user_logged_in()) {
         cf_smart_cache_add_security_headers();
+        cf_smart_cache_record_bypass_reason('logged-in');
         header('Cache-Control: private, no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -151,6 +152,7 @@ function cf_smart_cache_set_edge_headers()
     }
     if (is_admin() || $GLOBALS['pagenow'] === 'wp-login.php') {
         cf_smart_cache_add_security_headers();
+        cf_smart_cache_record_bypass_reason('admin');
         header('Cache-Control: private, no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -163,6 +165,7 @@ function cf_smart_cache_set_edge_headers()
     }
     if (defined('DOING_AJAX') && DOING_AJAX) {
         cf_smart_cache_add_security_headers();
+        cf_smart_cache_record_bypass_reason('ajax');
         header('Cache-Control: private, no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -175,6 +178,7 @@ function cf_smart_cache_set_edge_headers()
     }
     if (defined('REST_REQUEST') && REST_REQUEST) {
         cf_smart_cache_add_security_headers();
+        cf_smart_cache_record_bypass_reason('rest');
         header('Cache-Control: private, no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -187,6 +191,7 @@ function cf_smart_cache_set_edge_headers()
     }
     if (function_exists('is_preview') && is_preview()) {
         cf_smart_cache_add_security_headers();
+        cf_smart_cache_record_bypass_reason('preview');
         header('Cache-Control: private, no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -199,6 +204,7 @@ function cf_smart_cache_set_edge_headers()
     }
     if (function_exists('post_password_required') && post_password_required()) {
         cf_smart_cache_add_security_headers();
+        cf_smart_cache_record_bypass_reason('password');
         header('Cache-Control: private, no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -211,6 +217,7 @@ function cf_smart_cache_set_edge_headers()
     }
     if ((function_exists('is_cart') && is_cart()) || (function_exists('is_checkout') && is_checkout()) || (function_exists('is_account_page') && is_account_page())) {
         cf_smart_cache_add_security_headers();
+        cf_smart_cache_record_bypass_reason('woocommerce');
         header('Cache-Control: private, no-store, no-cache, must-revalidate');
         header('Pragma: no-cache');
         header('Expires: 0');
@@ -234,6 +241,7 @@ function cf_smart_cache_set_edge_headers()
         header('x-HTML-Edge-Cache: cache');
         header('Cache-Control: public, max-age=1800, s-maxage=3600');
     }
+    cf_smart_cache_increment_hit( home_url( add_query_arg( array(), $GLOBALS['wp']->request ) ) );
     cf_smart_cache_log('Edge caching enabled with security headers');
 }
 function cf_smart_cache_add_security_headers()
@@ -249,6 +257,129 @@ function cf_smart_cache_add_security_headers()
     }
 }
 
+
+// =============================================================================
+// Cache Statistics
+// =============================================================================
+
+/**
+ * Stats transient keys (kept here so they are easy to find and rename).
+ */
+function cf_smart_cache_stats_keys() {
+    return array(
+        'hits'         => 'cf_smart_cache_stats_hits',
+        'misses'       => 'cf_smart_cache_stats_miss',
+        'cached_urls'  => 'cf_smart_cache_cached_urls',
+        'bypass'       => 'cf_smart_cache_bypass_reasons',
+        'last_bypass'  => 'cf_smart_cache_last_bypass_reason',
+    );
+}
+
+/**
+ * Increment cache hit counter and record the URL.
+ */
+function cf_smart_cache_increment_hit( $url = '' ) {
+    $keys = cf_smart_cache_stats_keys();
+    $hits = (int) get_transient( $keys['hits'] );
+    set_transient( $keys['hits'], $hits + 1, HOUR_IN_SECONDS );
+    if ( ! empty( $url ) ) {
+        cf_smart_cache_record_cache_url( $url );
+    }
+}
+
+/**
+ * Increment cache miss counter and record the bypass reason.
+ */
+function cf_smart_cache_increment_miss( $reason = 'no_header' ) {
+    $keys  = cf_smart_cache_stats_keys();
+    $misses = (int) get_transient( $keys['misses'] );
+    set_transient( $keys['misses'], $misses + 1, HOUR_IN_SECONDS );
+    cf_smart_cache_record_bypass_reason( $reason );
+    set_transient( $keys['last_bypass'], $reason, HOUR_IN_SECONDS );
+}
+
+/**
+ * Append a URL to the rolling cached-URL list (capped at 1000 entries).
+ */
+function cf_smart_cache_record_cache_url( $url, $timestamp = null ) {
+    if ( empty( $url ) ) {
+        return;
+    }
+    $keys = cf_smart_cache_stats_keys();
+    $list = get_transient( $keys['cached_urls'] );
+    if ( ! is_array( $list ) ) {
+        $list = array();
+    }
+    $list[] = array(
+        'url'       => esc_url_raw( $url ),
+        'timestamp' => $timestamp ? (int) $timestamp : time(),
+        'type'      => 'hit',
+    );
+    if ( count( $list ) > 1000 ) {
+        $list = array_slice( $list, -1000 );
+    }
+    set_transient( $keys['cached_urls'], $list, HOUR_IN_SECONDS );
+}
+
+/**
+ * Increment the counter for a specific bypass reason.
+ */
+function cf_smart_cache_record_bypass_reason( $reason ) {
+    $keys   = cf_smart_cache_stats_keys();
+    $counts = get_transient( $keys['bypass'] );
+    if ( ! is_array( $counts ) ) {
+        $counts = array();
+    }
+    $reason             = sanitize_key( $reason );
+    $counts[ $reason ]  = isset( $counts[ $reason ] ) ? (int) $counts[ $reason ] + 1 : 1;
+    set_transient( $keys['bypass'], $counts, HOUR_IN_SECONDS );
+}
+
+/**
+ * Return aggregate cache stats for the admin dashboard.
+ */
+function cf_smart_cache_get_cache_stats() {
+    $keys = cf_smart_cache_stats_keys();
+    $hits   = (int) get_transient( $keys['hits'] );
+    $misses = (int) get_transient( $keys['misses'] );
+    $total  = $hits + $misses;
+    $list   = get_transient( $keys['cached_urls'] );
+    $rate   = $total > 0 ? round( ( $hits / $total ) * 100, 1 ) : 0;
+    return array(
+        'hits'              => $hits,
+        'misses'            => $misses,
+        'total'             => $total,
+        'hit_rate'          => $rate,
+        'cached_urls_count' => is_array( $list ) ? count( $list ) : 0,
+        'last_bypass_reason' => get_transient( $keys['last_bypass'] ),
+    );
+}
+
+/**
+ * Return a paginated, most-recent-first slice of cached URLs.
+ */
+function cf_smart_cache_get_cached_urls( $limit = 20, $offset = 0 ) {
+    $keys = cf_smart_cache_stats_keys();
+    $list = get_transient( $keys['cached_urls'] );
+    if ( ! is_array( $list ) || empty( $list ) ) {
+        return array();
+    }
+    $list = array_reverse( $list );
+    return array_slice( $list, (int) $offset, (int) $limit );
+}
+
+/**
+ * Return bypass reason counts sorted descending.
+ */
+function cf_smart_cache_get_bypass_reasons() {
+    $keys   = cf_smart_cache_stats_keys();
+    $counts = get_transient( $keys['bypass'] );
+    if ( ! is_array( $counts ) || empty( $counts ) ) {
+        return array();
+    }
+    arsort( $counts );
+    return $counts;
+}
 // Purge logic
 function cf_smart_cache_purge()
 {
@@ -474,7 +605,7 @@ add_action('rest_api_init', function ()
 function cf_smart_cache_get_plugin_info()
 {
     return [
-        'version'           => '2.0.2',
+        'version'           => '2.2.0',
         'min_wp_version'    => '5.0',
         'tested_wp_version' => '6.4',
         'min_php_version'   => '7.4',
@@ -498,4 +629,5 @@ function cf_smart_cache_get_plugin_info()
         ]
     ];
 }
+
 
