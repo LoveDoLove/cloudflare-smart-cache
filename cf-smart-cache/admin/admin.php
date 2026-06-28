@@ -428,3 +428,26 @@ add_action('admin_notices', function ()
     }
 });
 
+/**
+ * Display cache status in admin UI
+ */
+function cf_smart_cache_display_cache_status() {
+    $stats = cf_smart_cache_get_cache_stats();
+    $total = $stats['hits'] + $stats['misses'];
+    $hit_rate = ($total > 0) ? round(($stats['hits'] / $total) * 100, 2) : 0;
+    ?>
+    <div class="cf-stats-container" style="background: #fff; padding: 15px; border: 1px solid #ccd0d4;">
+        <p><strong><?php esc_html_e('Cache Hit Rate:', 'cf-smart-cache'); ?></strong> <?php echo esc_html($hit_rate); ?>%</p>
+        <ul>
+            <li><?php echo esc_html(sprintf(__('Total Hits: %d', 'cf-smart-cache'), $stats['hits'])); ?></li>
+            <li><?php echo esc_html(sprintf(__('Total Misses: %d', 'cf-smart-cache'), $stats['misses'])); ?></li>
+        </ul>
+        <h4><?php esc_html_e('Bypass Reasons:', 'cf-smart-cache'); ?></h4>
+        <ul>
+            <?php foreach ($stats['bypass'] as $reason => $count) : ?>
+                <li><?php echo esc_html(ucfirst($reason) . ': ' . $count); ?></li>
+            <?php endforeach; ?>
+        </ul>
+    </div>
+    <?php
+}

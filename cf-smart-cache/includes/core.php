@@ -499,3 +499,24 @@ function cf_smart_cache_get_plugin_info()
     ];
 }
 
+// ===================== Cache Statistics Logic =====================
+
+function cf_smart_cache_increment_hit() {
+    $stats = get_transient('cf_smart_cache_stats') ?: ['hits' => 0, 'misses' => 0, 'bypass' => []];
+    $stats['hits']++;
+    set_transient('cf_smart_cache_stats', $stats, HOUR_IN_SECONDS);
+}
+
+function cf_smart_cache_increment_miss($reason = 'unknown') {
+    $stats = get_transient('cf_smart_cache_stats') ?: ['hits' => 0, 'misses' => 0, 'bypass' => []];
+    $stats['misses']++;
+    if (!isset($stats['bypass'][$reason])) {
+        $stats['bypass'][$reason] = 0;
+    }
+    $stats['bypass'][$reason]++;
+    set_transient('cf_smart_cache_stats', $stats, HOUR_IN_SECONDS);
+}
+
+function cf_smart_cache_get_cache_stats() {
+    return get_transient('cf_smart_cache_stats') ?: ['hits' => 0, 'misses' => 0, 'bypass' => []];
+}
