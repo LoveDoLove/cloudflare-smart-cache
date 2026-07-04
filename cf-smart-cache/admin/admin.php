@@ -372,10 +372,6 @@ function cf_smart_cache_options_page_html()
             $r = cf_smart_cache_apply_page_rule( $zone_name );
             $results['page_rule'] = is_wp_error( $r ) ? 'error: ' . $r->get_error_message() : 'ok';
         }
-        if ( ! empty( $_POST['apply_explicit_cc'] ) ) {
-            $r = cf_smart_cache_apply_zone_setting( 'explicit_cache_control', 'on' );
-            $results['explicit_cc'] = is_wp_error( $r ) ? 'error: ' . $r->get_error_message() : 'ok';
-        }
         if ( ! empty( $_POST['apply_dns_proxy'] ) ) {
             $strategy = $_POST['dns_proxy_strategy'] ?? 'root';
             $records  = cf_smart_cache_get_dns_records( $zone_name );
@@ -808,11 +804,12 @@ function cf_smart_cache_display_auto_config( $message = '' ) {
             <code><?php echo esc_html( $status['page_rule']['pattern'] ?? '*domain.com/*' ); ?></code>
         </p>
 
-        <p>
+        <p style="color:#666;">
             <label>
-                <input type="checkbox" name="apply_explicit_cc" value="1" checked>
+                <input type="checkbox" checked disabled>
                 <?php esc_html_e( 'Enable Origin Cache Control', 'cf-smart-cache' ); ?>
             </label>
+            <span class="description"><?php esc_html_e( '(included in Page Rule — always applied)', 'cf-smart-cache' ); ?></span>
         </p>
 
         <p>

@@ -1171,7 +1171,7 @@ function cf_smart_cache_get_dns_records( $domain = '' ) {
     }
 
     $response = cf_smart_cache_http_request(
-        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/dns_records?per_page=100&name={$domain}",
+        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/dns_records?per_page=100",
         array( 'method' => 'GET', 'timeout' => 15 ),
         'fetch dns records'
     );
@@ -1241,7 +1241,6 @@ function cf_smart_cache_backup_config() {
 
     $page_rules = cf_smart_cache_get_page_rules();
     $edge_ttl   = cf_smart_cache_get_zone_setting( 'edge_cache_ttl' );
-    $explicit_cc = cf_smart_cache_get_zone_setting( 'explicit_cache_control' );
 
     $backup = array(
         'timestamp'         => time(),
@@ -1249,7 +1248,6 @@ function cf_smart_cache_backup_config() {
         'page_rules'        => is_wp_error( $page_rules ) ? array() : $page_rules,
         'settings'          => array(
             'edge_cache_ttl'       => is_wp_error( $edge_ttl ) ? '' : $edge_ttl,
-            'explicit_cache_control' => is_wp_error( $explicit_cc ) ? '' : $explicit_cc,
         ),
     );
 
@@ -1306,12 +1304,6 @@ function cf_smart_cache_restore_backup( $index ) {
     if ( isset( $b['settings']['edge_cache_ttl'] ) && '' !== $b['settings']['edge_cache_ttl'] ) {
         $r = cf_smart_cache_apply_zone_setting( 'edge_cache_ttl', $b['settings']['edge_cache_ttl'] );
         $results['edge_cache_ttl_restored'] = ! is_wp_error( $r );
-    }
-
-    // 3. Restore explicit_cache_control.
-    if ( isset( $b['settings']['explicit_cache_control'] ) && '' !== $b['settings']['explicit_cache_control'] ) {
-        $r = cf_smart_cache_apply_zone_setting( 'explicit_cache_control', $b['settings']['explicit_cache_control'] );
-        $results['explicit_cc_restored'] = ! is_wp_error( $r );
     }
 
     delete_transient( 'cf_smart_cache_page_rules' );
@@ -1376,12 +1368,12 @@ function cf_smart_cache_get_config_status() {
         }
     }
 
-    // Origin Cache Control check.
-    $explicit = cf_smart_cache_get_zone_setting( 'explicit_cache_control' );
-    if ( ! is_wp_error( $explicit ) ) {
-        $status['explicit_cc'] = array( 'status' => ( $explicit === 'on' ) ? 'ok' : 'wrong', 'current' => $explicit );
+    // Origin Cache Control is enabled via the Page Rule action (explicit_cache_control=on).
+    // Zone-level setting API does not accept 'explicit_cache_control' — it's a Page Rule action only.
+    if ( $status['page_rule']['status'] === 'ok' ) {
+        $status['explicit_cc'] = array( 'status' => 'ok', 'current' => 'on (via Page Rule)' );
     } else {
-        $status['explicit_cc'] = array( 'status' => 'error', 'current' => null, 'error' => $explicit->get_error_message() );
+        $status['explicit_cc'] = array( 'status' => 'missing', 'current' => null );
     }
 
     // DNS proxy check.
