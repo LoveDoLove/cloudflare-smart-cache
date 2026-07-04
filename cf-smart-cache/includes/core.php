@@ -983,21 +983,28 @@ function cf_smart_cache_get_zone_plan() {
         return '';
     }
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
-    if ( empty( $body['success'] ) || ! isset( $body['result']['plan']['id'] ) ) {
+    if ( empty( $body['success'] ) || ! isset( $body['result']['plan'] ) ) {
         return '';
     }
+    $plan_data = $body['result']['plan'];
     // Extract plan id: 'free', 'pro', 'business', 'enterprise'.
-    $plan = $body['result']['plan']['id'];
-    // Normalise legacy plan names.
+    $plan_id   = isset( $plan_data['id'] ) && is_string( $plan_data['id'] ) ? $plan_data['id'] : '';
+    $plan_name = isset( $plan_data['name'] ) && is_string( $plan_data['name'] ) ? $plan_data['name'] : '';
+    // Normalise legacy plan names — check both id and name.
     $known = array( 'free', 'pro', 'business', 'enterprise' );
     foreach ( $known as $p ) {
-        if ( false !== stripos( $plan, $p ) ) {
-            $plan = $p;
+        if ( ( $plan_id && false !== stripos( $plan_id, $p ) ) || ( $plan_name && false !== stripos( $plan_name, $p ) ) ) {
+            $plan_id = $p;
             break;
         }
     }
-    set_transient( 'cf_smart_cache_zone_plan', $plan, DAY_IN_SECONDS );
-    return $plan;
+    // Some plans (partner, reseller) use UUIDs as plan.id.
+    // In that case, use the human-readable name if available.
+    if ( $plan_id && ! in_array( $plan_id, $known, true ) ) {
+        $plan_id = $plan_name ?: 'free';
+    }
+    set_transient( 'cf_smart_cache_zone_plan', $plan_id, DAY_IN_SECONDS );
+    return $plan_id;
 }
 
 /**
