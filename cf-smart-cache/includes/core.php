@@ -566,6 +566,17 @@ function cf_smart_cache_http_request( $url, $args = array(), $operation = '' ) {
         $args['method'] = 'POST';
     }
 
+    // Inject auth header if not already set — all Cloudflare API calls need it.
+    if ( ! isset( $args['headers']['Authorization'] ) ) {
+        $token = $settings['cf_smart_cache_api_token'] ?? '';
+        if ( ! empty( $token ) ) {
+            if ( ! isset( $args['headers'] ) ) {
+                $args['headers'] = array();
+            }
+            $args['headers']['Authorization'] = 'Bearer ' . $token;
+        }
+    }
+
     for ( $attempt = 0; $attempt < $max_retries; $attempt++ ) {
         // Consult global sliding-window governor.
         $governed = cf_smart_cache_rate_governor( 'consume' );
@@ -967,7 +978,8 @@ function cf_smart_cache_get_page_rules() {
     }
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
     if ( empty( $body['success'] ) || ! isset( $body['result'] ) ) {
-        return new WP_Error( 'api_error', 'Invalid Page Rules response' );
+        $err_msg = isset( $body['errors'][0]['message'] ) ? $body['errors'][0]['message'] : 'Unknown error';
+        return new WP_Error( 'api_error', "Invalid Page Rules response: {$err_msg}" );
     }
     set_transient( $cache_key, $body['result'], DAY_IN_SECONDS );
     return $body['result'];
@@ -1013,7 +1025,8 @@ function cf_smart_cache_get_zone_setting( $setting_id ) {
     }
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
     if ( empty( $body['success'] ) || ! isset( $body['result']['value'] ) ) {
-        return new WP_Error( 'api_error', "Invalid response for {$setting_id}" );
+        $err_msg = isset( $body['errors'][0]['message'] ) ? $body['errors'][0]['message'] : 'Unknown error';
+        return new WP_Error( 'api_error', "Invalid response for {$setting_id}: {$err_msg}" );
     }
     return $body['result']['value'];
 }
@@ -1042,7 +1055,8 @@ function cf_smart_cache_apply_zone_setting( $setting_id, $value ) {
     }
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
     if ( empty( $body['success'] ) ) {
-        return new WP_Error( 'api_error', "Failed to set {$setting_id}" );
+        $err_msg = isset( $body['errors'][0]['message'] ) ? $body['errors'][0]['message'] : 'Unknown error';
+        return new WP_Error( 'api_error', "Failed to set {$setting_id}: {$err_msg}" );
     }
     return $body['result']['value'] ?? true;
 }
@@ -1166,7 +1180,8 @@ function cf_smart_cache_get_dns_records( $domain = '' ) {
     }
     $body = json_decode( wp_remote_retrieve_body( $response ), true );
     if ( empty( $body['success'] ) ) {
-        return new WP_Error( 'api_error', 'Failed to fetch DNS records' );
+        $err_msg = isset( $body['errors'][0]['message'] ) ? $body['errors'][0]['message'] : 'Unknown error';
+        return new WP_Error( 'api_error', "Failed to fetch DNS records: {$err_msg}" );
     }
 
     $proxiable = array();
