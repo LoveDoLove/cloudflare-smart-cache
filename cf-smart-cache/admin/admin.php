@@ -350,6 +350,61 @@ function cf_smart_cache_options_page_html()
         }
         cf_smart_cache_batch_purge([home_url('/')]);
     }
+
+    // Auto-Config handlers
+    $auto_config_message = '';
+    if (isset($_POST['cf_smart_cache_backup'])) {
+        if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-auto-config')) {
+            wp_die(__('Security check failed.', 'cf-smart-cache'));
+        }
+        $count = cf_smart_cache_backup_config();
+        $auto_config_message = sprintf(__('Backup saved (%d of 3 slots).', 'cf-smart-cache'), $count);
+    }
+    if (isset($_POST['cf_smart_cache_apply'])) {
+        if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-auto-config')) {
+            wp_die(__('Security check failed.', 'cf-smart-cache'));
+        }
+        cf_smart_cache_backup_config();
+        $zone_name = cf_smart_cache_get_zone_name();
+        $results = array();
+
+        if ( ! empty( $_POST['apply_page_rule'] ) && $zone_name ) {
+            $r = cf_smart_cache_apply_page_rule( $zone_name );
+            $results['page_rule'] = is_wp_error( $r ) ? 'error: ' . $r->get_error_message() : 'ok';
+        }
+        if ( ! empty( $_POST['apply_explicit_cc'] ) ) {
+            $r = cf_smart_cache_apply_zone_setting( 'explicit_cache_control', 'on' );
+            $results['explicit_cc'] = is_wp_error( $r ) ? 'error: ' . $r->get_error_message() : 'ok';
+        }
+        if ( ! empty( $_POST['apply_dns_proxy'] ) ) {
+            $strategy = $_POST['dns_proxy_strategy'] ?? 'root';
+            $records  = cf_smart_cache_get_dns_records( $zone_name );
+            if ( ! is_wp_error( $records ) ) {
+                if ( 'root' === $strategy ) {
+                    $records = array_filter( $records, function ( $r ) use ( $zone_name ) {
+                        return $r['name'] === $zone_name || $r['name'] === "{$zone_name}.";
+                    } );
+                }
+                $r = cf_smart_cache_apply_dns_proxy( $records );
+                $results['dns_proxy'] = count( $r ) . ' records updated';
+            } else {
+                $results['dns_proxy'] = 'error: ' . $records->get_error_message();
+            }
+        }
+
+        $auto_config_message = 'Apply results: ' . wp_json_encode( $results );
+    }
+    if (isset($_POST['cf_smart_cache_rollback'])) {
+        if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-auto-config')) {
+            wp_die(__('Security check failed.', 'cf-smart-cache'));
+        }
+        $index = isset( $_POST['rollback_index'] ) ? (int) $_POST['rollback_index'] : -1;
+        if ( $index >= 0 ) {
+            cf_smart_cache_backup_config();
+            $r = cf_smart_cache_restore_backup( $index );
+            $auto_config_message = 'Rollback results: ' . wp_json_encode( $r );
+        }
+    }
     ?>
     <div class="wrap">
         <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
@@ -378,6 +433,8 @@ function cf_smart_cache_options_page_html()
         <hr>
         <h2><?php esc_html_e('Cache Status', 'cf-smart-cache'); ?></h2>
         <?php cf_smart_cache_display_cache_status(); ?>
+        <hr>
+        <?php cf_smart_cache_display_auto_config( $auto_config_message ); ?>
     </div>
     <?php
 }
@@ -675,4 +732,144 @@ add_action('admin_notices', function ()
         echo '<div class="notice notice-error"><p><strong>Cloudflare Smart Cache:</strong> ' . esc_html__('Cloudflare Zone ID is missing. Please select a zone in the plugin settings.', 'cf-smart-cache') . '</p></div>';
     }
 });
+
+/**
+ * Render the Auto-Configuration section in the admin settings page.
+ */
+function cf_smart_cache_display_auto_config( $message = '' ) {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    $status = cf_smart_cache_get_config_status();
+    ?>
+    <h2><?php esc_html_e( 'Cloudflare Auto-Configuration', 'cf-smart-cache' ); ?></h2>
+    <p class="description"><?php esc_html_e( 'Automatically configure Cloudflare settings for optimal cache performance.', 'cf-smart-cache' ); ?></p>
+
+    <?php if ( $message ) : ?>
+        <div class="notice notice-info is-dismissible"><p><strong>CF Smart Cache:</strong> <?php echo esc_html( $message ); ?></p></div>
+    <?php endif; ?>
+
+    <?php if ( ! $status['api_token_set'] || ! $status['zone_id_set'] ) : ?>
+        <div class="notice notice-warning"><p><?php esc_html_e( 'Please configure your API Token and Zone ID first.', 'cf-smart-cache' ); ?></p></div>
+        <?php return; ?>
+    <?php endif; ?>
+
+    <div style="max-width:720px;">
+
+    <!-- Status table -->
+    <table class="widefat striped">
+        <tbody>
+        <tr><th style="width:200px;"><?php esc_html_e( 'Zone', 'cf-smart-cache' ); ?></th>
+            <td><strong><?php echo esc_html( $status['zone_name'] ?: $status['site_domain'] ); ?></strong>
+                (<?php echo esc_html( strtoupper( $status['plan'] ) ); ?>)
+            </td></tr>
+        <tr><th><?php esc_html_e( 'Page Rule', 'cf-smart-cache' ); ?></th>
+            <td><?php echo cf_smart_cache_config_status_badge( $status['page_rule']['status'] ); ?>
+                <?php echo esc_html( $status['page_rule']['pattern'] ?? '' ); ?></td></tr>
+        <tr><th><?php esc_html_e( 'Origin Cache Control', 'cf-smart-cache' ); ?></th>
+            <td><?php echo cf_smart_cache_config_status_badge( $status['explicit_cc']['status'] ); ?>
+                <?php echo esc_html( $status['explicit_cc']['current'] ? sprintf( 'current: %s', $status['explicit_cc']['current'] ) : '' ); ?></td></tr>
+        <tr><th><?php esc_html_e( 'DNS Proxy', 'cf-smart-cache' ); ?></th>
+            <td>
+                <?php
+                $unproxied = $status['dns_unproxied'] ?? array();
+                if ( count( $unproxied ) > 0 ) {
+                    echo cf_smart_cache_config_status_badge( 'missing' );
+                    foreach ( $unproxied as $r ) {
+                        echo '<code>' . esc_html( "{$r['name']} ({$r['type']})" ) . '</code> ';
+                    }
+                } else {
+                    echo cf_smart_cache_config_status_badge( 'ok' );
+                }
+                ?>
+            </td></tr>
+        <tr><th><?php esc_html_e( 'Backup', 'cf-smart-cache' ); ?></th>
+            <td>
+                <?php if ( $status['backup_count'] > 0 ) : ?>
+                    <?php echo esc_html( sprintf( '%d backup(s)', $status['backup_count'] ) ); ?>
+                    &mdash; <?php echo esc_html( $status['last_backup_time'] ? date_i18n( 'Y-m-d H:i', $status['last_backup_time'] ) : '' ); ?>
+                <?php else : ?>
+                    <?php esc_html_e( 'No backup yet', 'cf-smart-cache' ); ?>
+                <?php endif; ?>
+            </td></tr>
+        </tbody>
+    </table>
+
+    <form method="post" style="margin-top:15px;">
+        <?php wp_nonce_field( 'cf-smart-cache-auto-config' ); ?>
+
+        <h3><?php esc_html_e( 'Apply Configuration', 'cf-smart-cache' ); ?></h3>
+
+        <p>
+            <label>
+                <input type="checkbox" name="apply_page_rule" value="1" checked>
+                <?php esc_html_e( 'Set Page Rule (Cache Everything)', 'cf-smart-cache' ); ?>
+            </label>
+            <code><?php echo esc_html( $status['page_rule']['pattern'] ?? '*domain.com/*' ); ?></code>
+        </p>
+
+        <p>
+            <label>
+                <input type="checkbox" name="apply_explicit_cc" value="1" checked>
+                <?php esc_html_e( 'Enable Origin Cache Control', 'cf-smart-cache' ); ?>
+            </label>
+        </p>
+
+        <p>
+            <label>
+                <input type="checkbox" name="apply_dns_proxy" value="1" checked>
+                <?php esc_html_e( 'Enable DNS Proxy (Orange Cloud)', 'cf-smart-cache' ); ?>
+            </label>
+            <select name="dns_proxy_strategy">
+                <option value="root"><?php esc_html_e( 'Root domain only', 'cf-smart-cache' ); ?></option>
+                <option value="all"><?php esc_html_e( 'All proxiable records', 'cf-smart-cache' ); ?></option>
+            </select>
+        </p>
+
+        <p>
+            <input type="submit" name="cf_smart_cache_backup" class="button button-secondary"
+                   value="<?php esc_attr_e( 'Backup Now', 'cf-smart-cache' ); ?>">
+            <input type="submit" name="cf_smart_cache_apply" class="button button-primary"
+                   value="<?php esc_attr_e( 'Apply Selected', 'cf-smart-cache' ); ?>">
+            <?php if ( $status['backup_count'] > 0 ) : ?>
+                <select name="rollback_index">
+                    <?php
+                    $backups = cf_smart_cache_get_backups();
+                    foreach ( array_reverse( $backups, true ) as $i => $b ) {
+                        printf(
+                            '<option value="%d">%s</option>',
+                            esc_attr( $i ),
+                            esc_html( date_i18n( 'Y-m-d H:i', $b['timestamp'] ) )
+                        );
+                    }
+                    ?>
+                </select>
+                <input type="submit" name="cf_smart_cache_rollback" class="button button-secondary"
+                       value="<?php esc_attr_e( 'Rollback', 'cf-smart-cache' ); ?>"
+                       onclick="return confirm('<?php echo esc_js( __( 'Current config will be backed up before restoring the selected version. Continue?', 'cf-smart-cache' ) ); ?>');">
+            <?php endif; ?>
+        </p>
+    </form>
+
+    </div>
+    <?php
+}
+
+/**
+ * Render a status badge for auto-config checks.
+ */
+function cf_smart_cache_config_status_badge( $status ) {
+    switch ( $status ) {
+        case 'ok':
+            return '<span style="color:#46b450;font-weight:bold;">&#10004; ' . esc_html__( 'OK', 'cf-smart-cache' ) . '</span>';
+        case 'missing':
+            return '<span style="color:#ffb900;font-weight:bold;">&#9888; ' . esc_html__( 'Not set', 'cf-smart-cache' ) . '</span>';
+        case 'wrong':
+            return '<span style="color:#dc3232;font-weight:bold;">&#10006; ' . esc_html__( 'Incorrect', 'cf-smart-cache' ) . '</span>';
+        case 'error':
+            return '<span style="color:#dc3232;">&#10006; ' . esc_html__( 'Error', 'cf-smart-cache' ) . '</span>';
+        default:
+            return '<span style="color:#999;">&#9899; ' . esc_html__( 'Unknown', 'cf-smart-cache' ) . '</span>';
+    }
+}
 

@@ -8,7 +8,7 @@
 Cloudflare Smart Cache 是一個專為 WordPress 打造的 Cloudflare 邊緣緩存解決方案，提供 HTML 邊緣緩存、自動清除緩存、高級管理控制等功能。
 
 ## Current Project Status
-- **Version:** 2.3.1 (plugin: cf-smart-cache/cf-smart-cache.php)
+- **Version:** 2.3.2 (plugin: cf-smart-cache/cf-smart-cache.php)
 - **Testing:** Tested up to WordPress 6.4
 - **Min Requirements:** WordPress 5.0, PHP 7.4
 - **License:** MIT
@@ -112,7 +112,10 @@ cloudflare-smart-cache/
 - Sanitize all user inputs before writing to settings
 
 ## Recent Updates (2025-09)
-- Version 2.2.0: Latest plugin version (Cache Statistics dashboard added)
+- Version 2.3.2: Latest plugin version (Auto-Configuration Wizard added)
+- Version 2.3.1: Cache mechanism core optimization
+- Version 2.3.0: Rate limiting optimization
+- Version 2.2.0: Cache Statistics dashboard
 - VitePress documentation site established
 - Issue templates ready for bugs and features
 - Comprehensive admin UI with error handling
@@ -213,7 +216,7 @@ cloudflare-smart-cache/
 
 ---
 
-## Function Inventory (v2.3.1)
+## Function Inventory (v2.3.2)
 
 ### Plugin lifecycle (`cf-smart-cache.php`)
 - `cf_smart_cache_activate()` — settings init, transients created
@@ -229,6 +232,7 @@ cloudflare-smart-cache/
 - Dynamic TTL (v2.3.1): `cf_smart_cache_get_ttl`
 - Purge triggers (v2.3.1): `cf_smart_cache_purge_on_profile_change`, `cf_smart_cache_purge_on_menu_change`
 - Post / Term hooks: `cf_smart_cache_get_supported_post_types`, `cf_smart_cache_get_post_purge_urls`, `cf_smart_cache_purge_urls_hash` (v2.3.1), `cf_smart_cache_on_status_change`, `cf_smart_cache_on_delete_post`, `cf_smart_cache_on_term_change`
+- Auto-Config (v2.3.2): `cf_smart_cache_get_site_domain`, `cf_smart_cache_get_zone_name`, `cf_smart_cache_get_page_rules`, `cf_smart_cache_find_our_rule`, `cf_smart_cache_apply_page_rule`, `cf_smart_cache_delete_page_rule`, `cf_smart_cache_get_zone_setting`, `cf_smart_cache_apply_zone_setting`, `cf_smart_cache_get_dns_records`, `cf_smart_cache_apply_dns_proxy`, `cf_smart_cache_backup_config`, `cf_smart_cache_get_backups`, `cf_smart_cache_restore_backup`, `cf_smart_cache_get_config_status`
 - Meta: `cf_smart_cache_get_plugin_info`
 
 ### Admin (`cf-smart-cache/admin/admin.php`)

@@ -28,7 +28,7 @@
 **類型**：WordPress 插件 + 邊緣緩存解決方案  
 **開發者**：LoveDoLove  
 **授權**：MIT License  
-**目前版本**：2.3.1
+**目前版本**：2.3.2
 
 這是一個功能齊全的 WordPress 插件，整合了 Cloudflare 邊緣緩存和自動清除功能，包括：
 
@@ -488,13 +488,14 @@ if (is_user_logged_in()) {
 ---
 
 **最後更新**：2026-07-05  
-**版本**：2.3.1
+**版本**：2.3.2
 " - 2026-06-27: 实现了缓存统计功能（命中/未命中计数器、已缓存 URL "列表、绕过原因追踪、管理员统计仪表盘）。 
 
 ---
 
 ## 變更日誌
 
+- **2.3.2** (2026-07-05) — Auto-Configuration Wizard：一鍵偵測/套用/備份/回滾 Cloudflare Page Rule, Origin Cache Control, DNS Proxy 設定
 - **2.3.1** (2026-07-05) — 緩存機制核心優化 Phase 1：廢棄舊式 purge0/1/2 系統、動態 TTL + stale directives、Purge URL 生成快取（wp_cache + post meta）
 - **2.3.0** (2026-07-05) — 生產級 Rate Limiting 優化：滑動時窗、Token Bucket、Exponential Backoff with Jitter、Adaptive Limit、Debounced Purge Queue、HTTP Executor Retry Layer、Admin Dashboard 可視化
 - **2.2.0** (2026-06-28) — 緩存統計功能 (Cache Statistics Dashboard)、修復 cf_smart_cache_display_cache_status undefined fatal error、修正函數命名對齊

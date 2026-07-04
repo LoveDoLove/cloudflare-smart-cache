@@ -881,7 +881,7 @@ add_action('rest_api_init', function ()
 function cf_smart_cache_get_plugin_info()
 {
     return [
-            'version'           => '2.3.1',
+            'version'           => '2.3.2',
         'min_wp_version'    => '5.0',
         'tested_wp_version' => '6.4',
         'min_php_version'   => '7.4',
@@ -895,7 +895,8 @@ function cf_smart_cache_get_plugin_info()
             'Performance Analytics',
             'Advanced Error Handling',
             'Developer Hooks',
-            'REST API Caching'
+            'REST API Caching',
+            'Auto-Configuration Wizard'
         ],
         'hooks'             => [
             'cf_smart_cache_bypass_cookies',
@@ -904,6 +905,496 @@ function cf_smart_cache_get_plugin_info()
             'cf_smart_cache_post_purge_urls'
         ]
     ];
+}
+
+// =============================================================================
+// Auto-Configuration Wizard
+// =============================================================================
+
+/**
+ * Return the main domain from WordPress site URL.
+ */
+function cf_smart_cache_get_site_domain() {
+    $host = wp_parse_url( home_url(), PHP_URL_HOST );
+    return $host ?: '';
+}
+
+/**
+ * Return the zone name from the cached zone list.
+ */
+function cf_smart_cache_get_zone_name() {
+    $settings  = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id   = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return '';
+    }
+    $zones = get_transient( 'cf_smart_cache_zone_list' );
+    if ( ! is_array( $zones ) ) {
+        $zones = cf_smart_cache_fetch_zones();
+        if ( is_wp_error( $zones ) ) {
+            return '';
+        }
+    }
+    foreach ( $zones as $z ) {
+        if ( $z['id'] === $zone_id ) {
+            return $z['name'];
+        }
+    }
+    return '';
+}
+
+/**
+ * Fetch existing Page Rules from Cloudflare (cached 24h).
+ */
+function cf_smart_cache_get_page_rules() {
+    $cache_key = 'cf_smart_cache_page_rules';
+    $cached    = get_transient( $cache_key );
+    if ( false !== $cached ) {
+        return $cached;
+    }
+    $settings  = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id   = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return new WP_Error( 'missing_zone', 'Zone ID not configured' );
+    }
+    $response = cf_smart_cache_http_request(
+        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/pagerules",
+        array( 'method' => 'GET', 'timeout' => 15 ),
+        'fetch page rules'
+    );
+    if ( is_wp_error( $response ) ) {
+        return $response;
+    }
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['success'] ) || ! isset( $body['result'] ) ) {
+        return new WP_Error( 'api_error', 'Invalid Page Rules response' );
+    }
+    set_transient( $cache_key, $body['result'], DAY_IN_SECONDS );
+    return $body['result'];
+}
+
+/**
+ * Find our smart-cache Page Rule by pattern match.
+ * Return the rule array or null.
+ */
+function cf_smart_cache_find_our_rule( $rules, $pattern ) {
+    if ( ! is_array( $rules ) ) {
+        return null;
+    }
+    foreach ( $rules as $rule ) {
+        if ( ! isset( $rule['targets'] ) ) {
+            continue;
+        }
+        foreach ( $rule['targets'] as $t ) {
+            if ( ( $t['target'] ?? '' ) === 'url' && ( $t['constraint']['value'] ?? '' ) === $pattern ) {
+                return $rule;
+            }
+        }
+    }
+    return null;
+}
+
+/**
+ * Get a zone-level setting value.
+ */
+function cf_smart_cache_get_zone_setting( $setting_id ) {
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return new WP_Error( 'missing_zone', 'Zone ID not configured' );
+    }
+    $response = cf_smart_cache_http_request(
+        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/settings/{$setting_id}",
+        array( 'method' => 'GET', 'timeout' => 15 ),
+        "get zone setting {$setting_id}"
+    );
+    if ( is_wp_error( $response ) ) {
+        return $response;
+    }
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['success'] ) || ! isset( $body['result']['value'] ) ) {
+        return new WP_Error( 'api_error', "Invalid response for {$setting_id}" );
+    }
+    return $body['result']['value'];
+}
+
+/**
+ * Apply a zone-level setting.
+ */
+function cf_smart_cache_apply_zone_setting( $setting_id, $value ) {
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return new WP_Error( 'missing_zone', 'Zone ID not configured' );
+    }
+    $response = cf_smart_cache_http_request(
+        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/settings/{$setting_id}",
+        array(
+            'method'  => 'PATCH',
+            'headers' => array( 'Content-Type' => 'application/json' ),
+            'body'    => wp_json_encode( array( 'value' => $value ) ),
+            'timeout' => 15,
+        ),
+        "patch zone setting {$setting_id}"
+    );
+    if ( is_wp_error( $response ) ) {
+        return $response;
+    }
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['success'] ) ) {
+        return new WP_Error( 'api_error', "Failed to set {$setting_id}" );
+    }
+    return $body['result']['value'] ?? true;
+}
+
+/**
+ * Create or update a Cache Everything Page Rule.
+ */
+function cf_smart_cache_apply_page_rule( $zone_name ) {
+    if ( empty( $zone_name ) ) {
+        return new WP_Error( 'missing_zone', 'Zone name is empty' );
+    }
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return new WP_Error( 'missing_zone', 'Zone ID not configured' );
+    }
+
+    $pattern = "*{$zone_name}/*";
+    $actions = array(
+        array( 'id' => 'cache_level', 'value' => 'cache_everything' ),
+        array( 'id' => 'edge_cache_ttl', 'value' => 0 ),
+        array( 'id' => 'explicit_cache_control', 'value' => 'on' ),
+    );
+    $targets = array(
+        array(
+            'target'     => 'url',
+            'constraint' => array(
+                'operator' => 'matches',
+                'value'    => $pattern,
+            ),
+        ),
+    );
+
+    $existing = cf_smart_cache_get_page_rules();
+    if ( is_wp_error( $existing ) ) {
+        return $existing;
+    }
+
+    $our = cf_smart_cache_find_our_rule( $existing, $pattern );
+    if ( $our && isset( $our['id'] ) ) {
+        $api_url = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/pagerules/{$our['id']}";
+        $method  = 'PUT';
+    } else {
+        $api_url = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/pagerules";
+        $method  = 'POST';
+    }
+
+    $body = wp_json_encode( array(
+        'targets'  => $targets,
+        'actions'  => $actions,
+        'priority' => 1,
+        'status'   => 'active',
+    ) );
+
+    $response = cf_smart_cache_http_request(
+        $api_url,
+        array(
+            'method'  => $method,
+            'headers' => array( 'Content-Type' => 'application/json' ),
+            'body'    => $body,
+            'timeout' => 15,
+        ),
+        "apply page rule {$pattern}"
+    );
+
+    if ( is_wp_error( $response ) ) {
+        return $response;
+    }
+
+    $resp_body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $resp_body['success'] ) ) {
+        $err_msg = isset( $resp_body['errors'][0]['message'] ) ? $resp_body['errors'][0]['message'] : 'Unknown error';
+        return new WP_Error( 'api_error', "Failed to apply page rule: {$err_msg}" );
+    }
+
+    delete_transient( 'cf_smart_cache_page_rules' );
+    return $resp_body['result']['id'] ?? true;
+}
+
+/**
+ * Delete a Page Rule by ID.
+ */
+function cf_smart_cache_delete_page_rule( $rule_id ) {
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return new WP_Error( 'missing_zone', 'Zone ID not configured' );
+    }
+    $response = cf_smart_cache_http_request(
+        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/pagerules/{$rule_id}",
+        array( 'method' => 'DELETE', 'timeout' => 15 ),
+        'delete page rule'
+    );
+    if ( is_wp_error( $response ) ) {
+        return $response;
+    }
+    delete_transient( 'cf_smart_cache_page_rules' );
+    return true;
+}
+
+/**
+ * Fetch proxiable DNS records for the given domain.
+ */
+function cf_smart_cache_get_dns_records( $domain = '' ) {
+    if ( empty( $domain ) ) {
+        $domain = cf_smart_cache_get_site_domain();
+    }
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return new WP_Error( 'missing_zone', 'Zone ID not configured' );
+    }
+
+    $response = cf_smart_cache_http_request(
+        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/dns_records?per_page=100&name={$domain}",
+        array( 'method' => 'GET', 'timeout' => 15 ),
+        'fetch dns records'
+    );
+    if ( is_wp_error( $response ) ) {
+        return $response;
+    }
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['success'] ) ) {
+        return new WP_Error( 'api_error', 'Failed to fetch DNS records' );
+    }
+
+    $proxiable = array();
+    foreach ( $body['result'] as $rec ) {
+        if ( in_array( $rec['type'], array( 'A', 'AAAA', 'CNAME' ), true ) && ! empty( $rec['proxiable'] ) ) {
+            $proxiable[] = $rec;
+        }
+    }
+    return $proxiable;
+}
+
+/**
+ * Enable proxy on DNS records (batch).
+ */
+function cf_smart_cache_apply_dns_proxy( $records ) {
+    if ( empty( $records ) ) {
+        return true;
+    }
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return new WP_Error( 'missing_zone', 'Zone ID not configured' );
+    }
+
+    $results = array();
+    foreach ( $records as $rec ) {
+        if ( ! empty( $rec['proxied'] ) ) {
+            continue;
+        }
+        $response = cf_smart_cache_http_request(
+            "https://api.cloudflare.com/client/v4/zones/{$zone_id}/dns_records/{$rec['id']}",
+            array(
+                'method'  => 'PATCH',
+                'headers' => array( 'Content-Type' => 'application/json' ),
+                'body'    => wp_json_encode( array( 'proxied' => true ) ),
+                'timeout' => 15,
+            ),
+            "enable proxy for {$rec['name']} ({$rec['type']})"
+        );
+
+        if ( is_wp_error( $response ) ) {
+            $results[] = $response;
+        } else {
+            $results[] = array( 'id' => $rec['id'], 'name' => $rec['name'], 'type' => $rec['type'], 'proxied' => true );
+        }
+    }
+    return $results;
+}
+
+/**
+ * Create a full backup snapshot of current Cloudflare config.
+ * Stores up to 3 recent backups in options (FIFO).
+ */
+function cf_smart_cache_backup_config() {
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+
+    $page_rules = cf_smart_cache_get_page_rules();
+    $edge_ttl   = cf_smart_cache_get_zone_setting( 'edge_cache_ttl' );
+    $explicit_cc = cf_smart_cache_get_zone_setting( 'explicit_cache_control' );
+
+    $backup = array(
+        'timestamp'         => time(),
+        'zone_id'           => $zone_id,
+        'page_rules'        => is_wp_error( $page_rules ) ? array() : $page_rules,
+        'settings'          => array(
+            'edge_cache_ttl'       => is_wp_error( $edge_ttl ) ? '' : $edge_ttl,
+            'explicit_cache_control' => is_wp_error( $explicit_cc ) ? '' : $explicit_cc,
+        ),
+    );
+
+    $backups   = get_option( 'cf_smart_cache_config_backups', array() );
+    if ( ! is_array( $backups ) ) {
+        $backups = array();
+    }
+    $backups[] = $backup;
+    if ( count( $backups ) > 3 ) {
+        $backups = array_slice( $backups, -3 );
+    }
+    update_option( 'cf_smart_cache_config_backups', $backups, false );
+    return count( $backups );
+}
+
+/**
+ * Return the list of stored backups.
+ */
+function cf_smart_cache_get_backups() {
+    $backups = get_option( 'cf_smart_cache_config_backups', array() );
+    return is_array( $backups ) ? $backups : array();
+}
+
+/**
+ * Restore a backup by its index in the backups array.
+ */
+function cf_smart_cache_restore_backup( $index ) {
+    $backups = cf_smart_cache_get_backups();
+    if ( ! isset( $backups[ $index ] ) ) {
+        return new WP_Error( 'invalid_backup', 'Backup index not found' );
+    }
+
+    $b       = $backups[ $index ];
+    $results = array();
+
+    // 1. Restore Page Rules: delete rules we know we created.
+    $settings    = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id     = $settings['cf_smart_cache_zone_id'] ?? '';
+    $zone_name   = cf_smart_cache_get_zone_name();
+    $our_pattern = $zone_name ? "*{$zone_name}/*" : '';
+
+    if ( $our_pattern && is_array( $b['page_rules'] ) ) {
+        $current_rules = cf_smart_cache_get_page_rules();
+        if ( ! is_wp_error( $current_rules ) ) {
+            $our = cf_smart_cache_find_our_rule( $current_rules, $our_pattern );
+            if ( $our && isset( $our['id'] ) ) {
+                $del = cf_smart_cache_delete_page_rule( $our['id'] );
+                $results['page_rule_deleted'] = ! is_wp_error( $del );
+            }
+        }
+    }
+
+    // 2. Restore edge_cache_ttl.
+    if ( isset( $b['settings']['edge_cache_ttl'] ) && '' !== $b['settings']['edge_cache_ttl'] ) {
+        $r = cf_smart_cache_apply_zone_setting( 'edge_cache_ttl', $b['settings']['edge_cache_ttl'] );
+        $results['edge_cache_ttl_restored'] = ! is_wp_error( $r );
+    }
+
+    // 3. Restore explicit_cache_control.
+    if ( isset( $b['settings']['explicit_cache_control'] ) && '' !== $b['settings']['explicit_cache_control'] ) {
+        $r = cf_smart_cache_apply_zone_setting( 'explicit_cache_control', $b['settings']['explicit_cache_control'] );
+        $results['explicit_cc_restored'] = ! is_wp_error( $r );
+    }
+
+    delete_transient( 'cf_smart_cache_page_rules' );
+
+    // Remove the used backup from the list.
+    unset( $backups[ $index ] );
+    update_option( 'cf_smart_cache_config_backups', array_values( $backups ), false );
+
+    return $results;
+}
+
+/**
+ * Return complete config status for the admin UI.
+ */
+function cf_smart_cache_get_config_status() {
+    $settings            = get_option( 'cf_smart_cache_settings', array() );
+    $zone_name           = cf_smart_cache_get_zone_name();
+    $site_domain         = cf_smart_cache_get_site_domain();
+    $zone_id             = $settings['cf_smart_cache_zone_id'] ?? '';
+    $api_token           = $settings['cf_smart_cache_api_token'] ?? '';
+
+    $status = array(
+        'zone_name'            => $zone_name,
+        'site_domain'          => $site_domain,
+        'plan'                 => $settings['rate_limit_cf_plan'] ?? 'free',
+        'api_token_set'        => ! empty( $api_token ),
+        'zone_id_set'          => ! empty( $zone_id ),
+        'page_rule'            => array( 'status' => 'unknown', 'id' => null, 'pattern' => null ),
+        'explicit_cc'          => array( 'status' => 'unknown', 'current' => null ),
+        'dns_records'          => array(),
+        'backup_count'         => 0,
+        'last_backup_time'     => 0,
+    );
+
+    // Page Rule check.
+    if ( $zone_name ) {
+        $pattern   = "*{$zone_name}/*";
+        $rules     = cf_smart_cache_get_page_rules();
+        if ( ! is_wp_error( $rules ) ) {
+            $our = cf_smart_cache_find_our_rule( $rules, $pattern );
+            if ( $our ) {
+                $is_active = ( $our['status'] ?? '' ) === 'active';
+                $has_cache_ever = false;
+                if ( isset( $our['actions'] ) ) {
+                    foreach ( $our['actions'] as $a ) {
+                        if ( ( $a['id'] ?? '' ) === 'cache_level' && ( $a['value'] ?? '' ) === 'cache_everything' ) {
+                            $has_cache_ever = true;
+                            break;
+                        }
+                    }
+                }
+                $status['page_rule'] = array(
+                    'status'  => ( $is_active && $has_cache_ever ) ? 'ok' : 'wrong',
+                    'id'      => $our['id'],
+                    'pattern' => $pattern,
+                );
+            } else {
+                $status['page_rule'] = array( 'status' => 'missing', 'id' => null, 'pattern' => $pattern );
+            }
+        } else {
+            $status['page_rule'] = array( 'status' => 'error', 'id' => null, 'pattern' => $pattern, 'error' => $rules->get_error_message() );
+        }
+    }
+
+    // Origin Cache Control check.
+    $explicit = cf_smart_cache_get_zone_setting( 'explicit_cache_control' );
+    if ( ! is_wp_error( $explicit ) ) {
+        $status['explicit_cc'] = array( 'status' => ( $explicit === 'on' ) ? 'ok' : 'wrong', 'current' => $explicit );
+    } else {
+        $status['explicit_cc'] = array( 'status' => 'error', 'current' => null, 'error' => $explicit->get_error_message() );
+    }
+
+    // DNS proxy check.
+    $records = cf_smart_cache_get_dns_records( $zone_name );
+    if ( ! is_wp_error( $records ) ) {
+        $unproxied = array();
+        foreach ( $records as $rec ) {
+            $entry = array( 'id' => $rec['id'], 'name' => $rec['name'], 'type' => $rec['type'], 'proxied' => ! empty( $rec['proxied'] ) );
+            if ( empty( $rec['proxied'] ) ) {
+                $unproxied[] = $entry;
+            }
+            $status['dns_records'][] = $entry;
+        }
+        $status['dns_unproxied'] = $unproxied;
+    } else {
+        $status['dns_records'] = array();
+        $status['dns_unproxied'] = array();
+        $status['dns_error'] = $records->get_error_message();
+    }
+
+    // Backup info.
+    $backups = cf_smart_cache_get_backups();
+    $status['backup_count'] = count( $backups );
+    if ( ! empty( $backups ) ) {
+        $status['last_backup_time'] = end( $backups )['timestamp'] ?? 0;
+    }
+
+    return $status;
 }
 
 

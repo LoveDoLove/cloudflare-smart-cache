@@ -35,6 +35,22 @@
   1. **Cache Warming** — 清除後自動對熱門 URL 發送 HEAD 請求
   2. **排程全站清除** — WP-Cron 每日/每週定時全站清除
 
+#### [Phase 4] Auto-Configuration Wizard（中優先級）
+- **狀態**：已完成
+- **優先級**：中
+- **完成內容**：
+  1. **偵測層** — `cf_smart_cache_get_config_status()` 回傳完整的 Page Rule / Origin Cache Control / DNS Proxy / Backup 狀態
+  2. **Page Rule 執行** — `POST/PUT /pagerules` 建立或更新規則，payload 含 `cache_level=cache_everything` + `edge_cache_ttl=0` + `explicit_cache_control=on`
+  3. **Zone Settings 執行** — `PATCH /settings/explicit_cache_control → on`；`PATCH /settings/edge_cache_ttl` for rollback
+  4. **DNS Proxy 執行** — 批次 `PATCH /dns_records/{id} → proxied=true`，支援 root-only 或全部策略
+  5. **備份/回滾** — 最多 3 版快照（option `cf_smart_cache_config_backups`），回滾前自動再備份，ID 精確匹配還原
+  6. **Admin UI** — 狀態燈號 + 可勾選開關 + 策略下拉 + 4 按鈕（Backup/Apply/Rollback）
+- **影響文件**：
+  - cf-smart-cache/includes/core.php（+14 個新函數，~200 行）
+  - cf-smart-cache/admin/admin.php（+2 個新函數 ~130 行）
+- **驗證**：php -l 兩檔皆無語法錯誤
+- **版本**：提升至 2.3.2
+
 #### [轉換] 實作 PHP 單元測試框架
 - **狀態**：待決
 - **優先級**：中
