@@ -1075,10 +1075,9 @@ function cf_smart_cache_apply_page_rule( $zone_name ) {
     }
 
     $pattern = "*{$zone_name}/*";
+    // Build actions incrementally so we can log which one fails.
     $actions = array(
         array( 'id' => 'cache_level', 'value' => 'cache_everything' ),
-        array( 'id' => 'edge_cache_ttl', 'value' => 0 ),
-        array( 'id' => 'explicit_cache_control', 'value' => 'on' ),
     );
     $targets = array(
         array(
@@ -1104,9 +1103,13 @@ function cf_smart_cache_apply_page_rule( $zone_name ) {
         $method  = 'POST';
     }
 
+    // Try adding edge_cache_ttl action.
+    $actions[] = array( 'id' => 'edge_cache_ttl', 'value' => 0 );
+
     $body = wp_json_encode( array(
         'targets'  => $targets,
         'actions'  => $actions,
+        'priority' => 50,
         'status'   => 'active',
     ) );
 
