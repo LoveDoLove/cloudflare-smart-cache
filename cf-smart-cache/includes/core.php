@@ -1130,8 +1130,11 @@ function cf_smart_cache_apply_page_rule( $zone_name ) {
 
     $resp_body = json_decode( wp_remote_retrieve_body( $response ), true );
     if ( empty( $resp_body['success'] ) ) {
-        // Dump full errors for debugging — Cloudflare nesting varies.
-        $err_msg = wp_json_encode( $resp_body['errors'] ?? array( array( 'message' => 'Unknown error' ) ) );
+        // Include both errors and messages — CF separates them.
+        $err_msg = wp_json_encode( array(
+            'errors'   => $resp_body['errors'] ?? array(),
+            'messages' => $resp_body['messages'] ?? array(),
+        ) );
         return new WP_Error( 'api_error', "Page Rule API error: {$err_msg}" );
     }
 
