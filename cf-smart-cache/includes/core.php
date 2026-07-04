@@ -116,23 +116,42 @@ function cf_smart_cache_init_action()
     if ($done) return;
     $done = true;
     cf_smart_cache_set_edge_headers();
-    add_action('wp_trash_post', 'cf_smart_cache_purge1', 0);
-    add_action('publish_post', 'cf_smart_cache_purge1', 0);
-    add_action('edit_post', 'cf_smart_cache_purge1', 0);
-    add_action('delete_post', 'cf_smart_cache_purge1', 0);
-    add_action('publish_phone', 'cf_smart_cache_purge1', 0);
-    add_action('trackback_post', 'cf_smart_cache_purge2', 99);
-    add_action('pingback_post', 'cf_smart_cache_purge2', 99);
-    add_action('comment_post', 'cf_smart_cache_purge2', 99);
-    add_action('edit_comment', 'cf_smart_cache_purge2', 99);
-    add_action('wp_set_comment_status', 'cf_smart_cache_purge2', 99, 2);
-    add_action('switch_theme', 'cf_smart_cache_purge1', 99);
-    add_action('edit_user_profile_update', 'cf_smart_cache_purge1', 99);
-    add_action('wp_update_nav_menu', 'cf_smart_cache_purge0');
-    add_action('clean_post_cache', 'cf_smart_cache_purge1');
-    add_action('transition_post_status', 'cf_smart_cache_post_transition', 10, 3);
+    add_action('switch_theme', 'cf_smart_cache_purge_all_cache');
+    add_action('edit_user_profile_update', 'cf_smart_cache_purge_on_profile_change');
+    add_action('wp_update_nav_menu', 'cf_smart_cache_purge_on_menu_change');
 }
 add_action('init', 'cf_smart_cache_init_action');
+
+function cf_smart_cache_purge_on_profile_change() {
+    cf_smart_cache_enqueue_purge([home_url('/')]);
+}
+function cf_smart_cache_purge_on_menu_change() {
+    cf_smart_cache_enqueue_purge([home_url('/')]);
+}
+
+// Dynamic TTL with stale-while-revalidate / stale-if-error
+function cf_smart_cache_get_ttl() {
+    $ttl = array(
+        's-maxage'               => 3600,
+        'max-age'                => 1800,
+        'stale-while-revalidate' => 86400,
+        'stale-if-error'         => 604800,
+    );
+    if (is_front_page() || is_home()) {
+        $ttl['s-maxage'] = 3600;
+        $ttl['max-age']  = 1800;
+    } elseif (is_single() || is_page()) {
+        $ttl['s-maxage'] = 14400;
+        $ttl['max-age']  = 7200;
+    } elseif (is_feed()) {
+        $ttl['s-maxage'] = 1800;
+        $ttl['max-age']  = 900;
+    } elseif (is_archive()) {
+        $ttl['s-maxage'] = 7200;
+        $ttl['max-age']  = 3600;
+    }
+    return apply_filters('cf_smart_cache_ttl', $ttl);
+}
 
 // Edge cache headers
 function cf_smart_cache_set_edge_headers()
@@ -231,16 +250,15 @@ function cf_smart_cache_set_edge_headers()
     cf_smart_cache_add_security_headers();
     header('x-HTML-Edge-Cache-Plugin: active');
     header('x-HTML-Edge-Cache-Debug: cache=public');
-    if (is_front_page() || is_home()) {
-        header('x-HTML-Edge-Cache: cache');
-        header('Cache-Control: public, max-age=3600, s-maxage=7200');
-    } elseif (is_single() || is_page()) {
-        header('x-HTML-Edge-Cache: cache');
-        header('Cache-Control: public, max-age=7200, s-maxage=14400');
-    } else {
-        header('x-HTML-Edge-Cache: cache');
-        header('Cache-Control: public, max-age=1800, s-maxage=3600');
-    }
+    header('x-HTML-Edge-Cache: cache');
+    $ttl = cf_smart_cache_get_ttl();
+    header(sprintf(
+        'Cache-Control: public, max-age=%d, s-maxage=%d, stale-while-revalidate=%d, stale-if-error=%d',
+        $ttl['max-age'],
+        $ttl['s-maxage'],
+        $ttl['stale-while-revalidate'],
+        $ttl['stale-if-error']
+    ));
     cf_smart_cache_increment_hit( home_url( add_query_arg( array(), $GLOBALS['wp']->request ) ) );
     cf_smart_cache_log('Edge caching enabled with security headers');
 }
@@ -380,25 +398,6 @@ function cf_smart_cache_get_bypass_reasons() {
     arsort( $counts );
     return $counts;
 }
-// Purge logic
-function cf_smart_cache_purge()
-{
-    static $purged = false;
-    if (!$purged) {
-        $purged = true;
-        header('x-HTML-Edge-Cache: purgeall');
-    }
-}
-function cf_smart_cache_purge0() { cf_smart_cache_purge(); }
-function cf_smart_cache_purge1($param1) { cf_smart_cache_purge(); }
-function cf_smart_cache_purge2($param1, $param2 = "") { cf_smart_cache_purge(); }
-function cf_smart_cache_post_transition($new_status, $old_status, $post)
-{
-    if ($new_status != $old_status) {
-        cf_smart_cache_purge();
-    }
-}
-
 // Rate limiting and batch processing
 
 /**
@@ -742,10 +741,30 @@ function cf_smart_cache_get_supported_post_types()
 }
 function cf_smart_cache_get_post_purge_urls($post_id)
 {
+    // Per-request cache (handles multiple hooks firing in same request).
+    $cache_key = 'cf_smart_cache_purge_urls_' . $post_id;
+    $cached = wp_cache_get($cache_key, 'cf_smart_cache');
+    if (false !== $cached) {
+        return $cached;
+    }
+
     $post = get_post($post_id);
     if (!$post || !in_array($post->post_type, cf_smart_cache_get_supported_post_types())) {
+        wp_cache_set($cache_key, [], 'cf_smart_cache', 300);
         return [];
     }
+
+    // Cross-request cache via post meta.
+    $meta_key = '_cf_smart_cache_purge_hash';
+    $stored   = get_post_meta($post_id, $meta_key, true);
+    if (is_array($stored) && isset($stored['urls'], $stored['hash'])) {
+        $current_hash = cf_smart_cache_purge_urls_hash($post_id, $post);
+        if ($current_hash === $stored['hash']) {
+            wp_cache_set($cache_key, $stored['urls'], 'cf_smart_cache', 300);
+            return $stored['urls'];
+        }
+    }
+
     $urls = [
         home_url('/'),
         get_permalink($post_id)
@@ -786,7 +805,32 @@ function cf_smart_cache_get_post_purge_urls($post_id)
             $urls[] = $archive_url;
         }
     }
-    return apply_filters('cf_smart_cache_post_purge_urls', array_unique($urls), $post_id, $post);
+
+    $urls = apply_filters('cf_smart_cache_post_purge_urls', array_unique($urls), $post_id, $post);
+
+    // Store in post meta for cross-request reuse.
+    $hash = cf_smart_cache_purge_urls_hash($post_id, $post);
+    update_post_meta($post_id, $meta_key, ['hash' => $hash, 'urls' => $urls]);
+
+    wp_cache_set($cache_key, $urls, 'cf_smart_cache', 300);
+    return $urls;
+}
+
+function cf_smart_cache_purge_urls_hash($post_id, $post) {
+    $terms = [];
+    $taxonomies = get_object_taxonomies($post->post_type);
+    foreach ($taxonomies as $tax) {
+        $t = get_the_terms($post_id, $tax);
+        if (!empty($t) && !is_wp_error($t)) {
+            $terms[$tax] = wp_list_pluck($t, 'term_id');
+        }
+    }
+    return md5(serialize([
+        'post_status' => $post->post_status,
+        'post_type'   => $post->post_type,
+        'post_author' => $post->post_author,
+        'terms'       => $terms,
+    ]));
 }
 function cf_smart_cache_on_status_change($new_status, $old_status, $post)
 {
@@ -806,6 +850,7 @@ function cf_smart_cache_on_delete_post($post_id)
         cf_smart_cache_log(sprintf('Post %d deleted, enqueuing %d URLs', $post_id, count($urls)));
         cf_smart_cache_enqueue_purge($urls);
     }
+    delete_post_meta($post_id, '_cf_smart_cache_purge_hash');
 }
 add_action('delete_post', 'cf_smart_cache_on_delete_post', 10, 1);
 function cf_smart_cache_on_term_change($term_id)
@@ -836,7 +881,7 @@ add_action('rest_api_init', function ()
 function cf_smart_cache_get_plugin_info()
 {
     return [
-        'version'           => '2.3.0',
+            'version'           => '2.3.1',
         'min_wp_version'    => '5.0',
         'tested_wp_version' => '6.4',
         'min_php_version'   => '7.4',

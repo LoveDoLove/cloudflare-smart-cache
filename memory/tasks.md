@@ -8,6 +8,33 @@
 
 ### [項目導向任務]
 
+#### [Phase 1] 緩存機制核心優化（高優先級）
+- **狀態**：已完成
+- **優先級**：高
+- **完成內容**：
+  1. **廢棄舊式 purge0/1/2 系統** — 移除 `cf_smart_cache_purge()/purge0/1/2/post_transition` 及 15+ 舊事件繫結；改為精簡的 `init_action()` 僅保留 edge headers + 3 個必要事件（switch_theme/edit_user_profile/wp_update_nav_menu）
+  2. **動態 TTL + stale directives** — 新增 `cf_smart_cache_get_ttl()`，內容感知 TTL 表（首頁/文章/歸檔/feed），加入 `stale-while-revalidate=86400` / `stale-if-error=604800`
+  3. **Purge URL 生成快取** — 雙層快取：wp_cache（per-request）+ post meta（cross-request hash-based），新增 `cf_smart_cache_purge_urls_hash()`，deleted post 自動清理 meta
+- **驗證**：php -l 無語法錯誤，`grep purge0/purge1/purge2` 無殘留
+
+#### [Phase 2] 緩存功能性增強（中優先級）
+- **狀態**：待決
+- **優先級**：中
+- **說明**：
+  1. **選擇性清除 by Post Type** — Settings 頁面 checkbox 群組，可過濾哪些 post type 觸發清除
+  2. **清除事件去重與節流** — request-level static dedup，忽略 publish→publish 等無意義轉變
+  3. **Cache Hit Ratio 告警** — 連續 3 小時低於 30% 時 admin notice 提示
+- **預期輸出**：
+  - 新的清除範圍篩選 UI
+  - 事件觸發次數降低 >50%
+
+#### [Phase 3] 緩存增強功能（低優先級）
+- **狀態**：待決
+- **優先級**：低
+- **說明**：
+  1. **Cache Warming** — 清除後自動對熱門 URL 發送 HEAD 請求
+  2. **排程全站清除** — WP-Cron 每日/每週定時全站清除
+
 #### [轉換] 實作 PHP 單元測試框架
 - **狀態**：待決
 - **優先級**：中

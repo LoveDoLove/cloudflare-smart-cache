@@ -8,7 +8,7 @@
 Cloudflare Smart Cache 是一個專為 WordPress 打造的 Cloudflare 邊緣緩存解決方案，提供 HTML 邊緣緩存、自動清除緩存、高級管理控制等功能。
 
 ## Current Project Status
-- **Version:** 2.3.0 (plugin: cf-smart-cache/cf-smart-cache.php)
+- **Version:** 2.3.1 (plugin: cf-smart-cache/cf-smart-cache.php)
 - **Testing:** Tested up to WordPress 6.4
 - **Min Requirements:** WordPress 5.0, PHP 7.4
 - **License:** MIT
@@ -213,7 +213,7 @@ cloudflare-smart-cache/
 
 ---
 
-## Function Inventory (v2.2.0)
+## Function Inventory (v2.3.1)
 
 ### Plugin lifecycle (`cf-smart-cache.php`)
 - `cf_smart_cache_activate()` — settings init, transients created
@@ -226,8 +226,9 @@ cloudflare-smart-cache/
 - Purge Queue (v2.3.0): `cf_smart_cache_enqueue_purge`, `cf_smart_cache_flush_purge_queue`
 - Headers / Cache logic: `cf_smart_cache_init_action`, `cf_smart_cache_set_edge_headers`, `cf_smart_cache_add_security_headers`, `cf_smart_cache_rest_api_headers`
 - Cache Statistics (v2.2.0): `cf_smart_cache_stats_keys`, `cf_smart_cache_increment_hit`, `cf_smart_cache_increment_miss`, `cf_smart_cache_record_cache_url`, `cf_smart_cache_record_bypass_reason`, `cf_smart_cache_get_cache_stats`, `cf_smart_cache_get_cached_urls`, `cf_smart_cache_get_bypass_reasons`
-- Purge triggers: `cf_smart_cache_purge`, `cf_smart_cache_purge0`, `cf_smart_cache_purge1`, `cf_smart_cache_purge2`, `cf_smart_cache_post_transition`
-- Post / Term hooks: `cf_smart_cache_get_supported_post_types`, `cf_smart_cache_get_post_purge_urls`, `cf_smart_cache_on_status_change`, `cf_smart_cache_on_delete_post`, `cf_smart_cache_on_term_change`
+- Dynamic TTL (v2.3.1): `cf_smart_cache_get_ttl`
+- Purge triggers (v2.3.1): `cf_smart_cache_purge_on_profile_change`, `cf_smart_cache_purge_on_menu_change`
+- Post / Term hooks: `cf_smart_cache_get_supported_post_types`, `cf_smart_cache_get_post_purge_urls`, `cf_smart_cache_purge_urls_hash` (v2.3.1), `cf_smart_cache_on_status_change`, `cf_smart_cache_on_delete_post`, `cf_smart_cache_on_term_change`
 - Meta: `cf_smart_cache_get_plugin_info`
 
 ### Admin (`cf-smart-cache/admin/admin.php`)
