@@ -1107,7 +1107,6 @@ function cf_smart_cache_apply_page_rule( $zone_name ) {
     $body = wp_json_encode( array(
         'targets'  => $targets,
         'actions'  => $actions,
-        'priority' => 1,
         'status'   => 'active',
     ) );
 
@@ -1129,6 +1128,10 @@ function cf_smart_cache_apply_page_rule( $zone_name ) {
     $resp_body = json_decode( wp_remote_retrieve_body( $response ), true );
     if ( empty( $resp_body['success'] ) ) {
         $err_msg = isset( $resp_body['errors'][0]['message'] ) ? $resp_body['errors'][0]['message'] : 'Unknown error';
+        // Cloudflare sometimes nests detail in meta.messages.
+        if ( isset( $resp_body['errors'][0]['meta']['messages'] ) && is_array( $resp_body['errors'][0]['meta']['messages'] ) ) {
+            $err_msg .= ' | ' . implode( '; ', $resp_body['errors'][0]['meta']['messages'] );
+        }
         return new WP_Error( 'api_error', "Failed to apply page rule: {$err_msg}" );
     }
 
