@@ -1170,23 +1170,33 @@ function cf_smart_cache_get_dns_records( $domain = '' ) {
         return new WP_Error( 'missing_zone', 'Zone ID not configured' );
     }
 
-    $response = cf_smart_cache_http_request(
-        "https://api.cloudflare.com/client/v4/zones/{$zone_id}/dns_records?per_page=100",
-        array( 'method' => 'GET', 'timeout' => 15 ),
-        'fetch dns records'
-    );
-    if ( is_wp_error( $response ) ) {
-        return $response;
-    }
-    $body = json_decode( wp_remote_retrieve_body( $response ), true );
-    if ( empty( $body['success'] ) ) {
-        $err_msg = isset( $body['errors'][0]['message'] ) ? $body['errors'][0]['message'] : 'Unknown error';
-        return new WP_Error( 'api_error', "Failed to fetch DNS records: {$err_msg}" );
-    }
+    $all_records = array();
+    $page        = 1;
+    $max_pages   = 5; // safety cap: 500 records
+    do {
+        $response = cf_smart_cache_http_request(
+            "https://api.cloudflare.com/client/v4/zones/{$zone_id}/dns_records?per_page=100&page={$page}",
+            array( 'method' => 'GET', 'timeout' => 15 ),
+            'fetch dns records'
+        );
+        if ( is_wp_error( $response ) ) {
+            return $response;
+        }
+        $body = json_decode( wp_remote_retrieve_body( $response ), true );
+        if ( empty( $body['success'] ) ) {
+            $err_msg = isset( $body['errors'][0]['message'] ) ? $body['errors'][0]['message'] : 'Unknown error';
+            return new WP_Error( 'api_error', "Failed to fetch DNS records: {$err_msg}" );
+        }
+        $all_records = array_merge( $all_records, $body['result'] );
+        $total_pages = isset( $body['result_info']['total_pages'] ) ? (int) $body['result_info']['total_pages'] : 1;
+        $page++;
+    } while ( $page <= $total_pages && $page <= $max_pages );
 
     $proxiable = array();
-    foreach ( $body['result'] as $rec ) {
+    foreach ( $all_records as $rec ) {
         if ( in_array( $rec['type'], array( 'A', 'AAAA', 'CNAME' ), true ) && ! empty( $rec['proxiable'] ) ) {
+            // Normalize name: strip trailing dot for consistent comparison.
+            $rec['_name_normalized'] = rtrim( $rec['name'], '.' );
             $proxiable[] = $rec;
         }
     }
@@ -1198,7 +1208,7 @@ function cf_smart_cache_get_dns_records( $domain = '' ) {
  */
 function cf_smart_cache_apply_dns_proxy( $records ) {
     if ( empty( $records ) ) {
-        return true;
+        return array( 'updated' => 0, 'skipped' => 0, 'errors' => 0, 'detail' => 'no_records_found' );
     }
     $settings = get_option( 'cf_smart_cache_settings', array() );
     $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
@@ -1206,9 +1216,12 @@ function cf_smart_cache_apply_dns_proxy( $records ) {
         return new WP_Error( 'missing_zone', 'Zone ID not configured' );
     }
 
-    $results = array();
+    $updated = 0;
+    $skipped = 0;
+    $errors  = 0;
     foreach ( $records as $rec ) {
         if ( ! empty( $rec['proxied'] ) ) {
+            $skipped++;
             continue;
         }
         $response = cf_smart_cache_http_request(
@@ -1223,12 +1236,12 @@ function cf_smart_cache_apply_dns_proxy( $records ) {
         );
 
         if ( is_wp_error( $response ) ) {
-            $results[] = $response;
+            $errors++;
         } else {
-            $results[] = array( 'id' => $rec['id'], 'name' => $rec['name'], 'type' => $rec['type'], 'proxied' => true );
+            $updated++;
         }
     }
-    return $results;
+    return array( 'updated' => $updated, 'skipped' => $skipped, 'errors' => $errors, 'detail' => 'done' );
 }
 
 /**

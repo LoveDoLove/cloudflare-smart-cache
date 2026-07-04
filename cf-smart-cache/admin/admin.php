@@ -370,19 +370,47 @@ function cf_smart_cache_options_page_html()
 
         if ( ! empty( $_POST['apply_page_rule'] ) && $zone_name ) {
             $r = cf_smart_cache_apply_page_rule( $zone_name );
-            $results['page_rule'] = is_wp_error( $r ) ? 'error: ' . $r->get_error_message() : 'ok';
+            if ( is_wp_error( $r ) ) {
+                $msg = $r->get_error_message();
+                if ( false !== stripos( $msg, 'unauthorized' ) || false !== stripos( $msg, 'forbidden' ) ) {
+                    $msg .= ' — Please add "Page Rules: Edit" permission to your API Token in Cloudflare Dashboard.';
+                }
+                $results['page_rule'] = 'error: ' . $msg;
+            } else {
+                $results['page_rule'] = 'ok';
+            }
         }
         if ( ! empty( $_POST['apply_dns_proxy'] ) ) {
             $strategy = $_POST['dns_proxy_strategy'] ?? 'root';
             $records  = cf_smart_cache_get_dns_records( $zone_name );
             if ( ! is_wp_error( $records ) ) {
                 if ( 'root' === $strategy ) {
-                    $records = array_filter( $records, function ( $r ) use ( $zone_name ) {
-                        return $r['name'] === $zone_name || $r['name'] === "{$zone_name}.";
+                    $zone_norm = rtrim( $zone_name, '.' );
+                    $records = array_filter( $records, function ( $r ) use ( $zone_norm ) {
+                        $name = rtrim( $r['name'], '.' );
+                        return $name === $zone_norm || $name === '@';
                     } );
                 }
-                $r = cf_smart_cache_apply_dns_proxy( $records );
-                $results['dns_proxy'] = count( $r ) . ' records updated';
+                if ( empty( $records ) ) {
+                    $results['dns_proxy'] = 'no matching records found (all may already be proxied)';
+                } else {
+                    $r = cf_smart_cache_apply_dns_proxy( $records );
+                    if ( is_wp_error( $r ) ) {
+                        $results['dns_proxy'] = 'error: ' . $r->get_error_message();
+                    } else {
+                        $parts = array();
+                        if ( $r['updated'] > 0 ) {
+                            $parts[] = $r['updated'] . ' updated';
+                        }
+                        if ( $r['skipped'] > 0 ) {
+                            $parts[] = $r['skipped'] . ' already proxied';
+                        }
+                        if ( $r['errors'] > 0 ) {
+                            $parts[] = $r['errors'] . ' errors';
+                        }
+                        $results['dns_proxy'] = empty( $parts ) ? 'no changes needed' : implode( ', ', $parts );
+                    }
+                }
             } else {
                 $results['dns_proxy'] = 'error: ' . $records->get_error_message();
             }
