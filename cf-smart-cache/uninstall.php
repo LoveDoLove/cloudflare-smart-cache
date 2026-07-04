@@ -31,6 +31,8 @@ function cf_smart_cache_uninstall_cleanup()
 
     // Remove all transients
     delete_transient('cf_smart_cache_zone_list');
+    delete_transient('cf_smart_cache_zone_plan');
+    delete_transient('cf_smart_cache_page_rules');
     delete_transient('cf_smart_cache_rate_limit');
     delete_transient('cf_smart_cache_recent_logs');
 

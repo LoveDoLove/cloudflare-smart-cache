@@ -369,15 +369,25 @@ function cf_smart_cache_options_page_html()
         $results = array();
 
         if ( ! empty( $_POST['apply_page_rule'] ) && $zone_name ) {
-            $r = cf_smart_cache_apply_page_rule( $zone_name );
-            if ( is_wp_error( $r ) ) {
-                $msg = $r->get_error_message();
-                if ( false !== stripos( $msg, 'unauthorized' ) || false !== stripos( $msg, 'forbidden' ) ) {
-                    $msg .= ' — Please add "Page Rules: Edit" permission to your API Token in Cloudflare Dashboard.';
-                }
-                $results['page_rule'] = 'error: ' . $msg;
+            // Check plan limits before attempting to create.
+            $plan        = cf_smart_cache_get_zone_plan();
+            $plan_limits = cf_smart_cache_get_plan_limits( $plan );
+            $rules       = cf_smart_cache_get_page_rules();
+            $used        = is_wp_error( $rules ) ? 0 : count( $rules );
+            $available   = ( $plan_limits['max_page_rules'] ?? 3 ) - $used;
+            if ( $available < 1 && ! cf_smart_cache_find_our_rule( is_wp_error( $rules ) ? array() : $rules, "*{$zone_name}/*" ) ) {
+                $results['page_rule'] = 'skipped: all ' . $plan_limits['max_page_rules'] . ' Page Rule slots are used';
             } else {
-                $results['page_rule'] = 'ok';
+                $r = cf_smart_cache_apply_page_rule( $zone_name );
+                if ( is_wp_error( $r ) ) {
+                    $msg = $r->get_error_message();
+                    if ( false !== stripos( $msg, 'unauthorized' ) || false !== stripos( $msg, 'forbidden' ) ) {
+                        $msg .= ' — Please add "Page Rules: Edit" permission to your API Token in Cloudflare Dashboard.';
+                    }
+                    $results['page_rule'] = 'error: ' . $msg;
+                } else {
+                    $results['page_rule'] = 'ok';
+                }
             }
         }
         if ( ! empty( $_POST['apply_dns_proxy'] ) ) {
@@ -786,6 +796,9 @@ function cf_smart_cache_display_auto_config( $message = '' ) {
         <tr><th style="width:200px;"><?php esc_html_e( 'Zone', 'cf-smart-cache' ); ?></th>
             <td><strong><?php echo esc_html( $status['zone_name'] ?: $status['site_domain'] ); ?></strong>
                 (<?php echo esc_html( strtoupper( $status['plan'] ) ); ?>)
+                <?php if ( isset( $status['page_rule_available'] ) && null !== $status['page_rule_available'] ) : ?>
+                    &mdash; <?php echo esc_html( sprintf( __( 'Page Rules: %d/%d used', 'cf-smart-cache' ), $status['page_rules_used'], $status['plan_limits']['max_page_rules'] ?? '?' ) ); ?>
+                <?php endif; ?>
             </td></tr>
         <tr><th><?php esc_html_e( 'Page Rule', 'cf-smart-cache' ); ?></th>
             <td><?php echo cf_smart_cache_config_status_badge( $status['page_rule']['status'] ); ?>

@@ -122,6 +122,12 @@ function cf_smart_cache_init_action()
 }
 add_action('init', 'cf_smart_cache_init_action');
 
+// Clear zone plan transient when settings change (zone may have changed).
+add_action( 'cf_smart_cache_after_settings_save', function () {
+    delete_transient( 'cf_smart_cache_zone_plan' );
+    delete_transient( 'cf_smart_cache_page_rules' );
+} );
+
 function cf_smart_cache_purge_on_profile_change() {
     cf_smart_cache_enqueue_purge([home_url('/')]);
 }
@@ -955,6 +961,63 @@ function cf_smart_cache_get_zone_name() {
 }
 
 /**
+ * Return the zone plan from Cloudflare API.
+ * Cached in transient for 24h to avoid repeated API calls.
+ */
+function cf_smart_cache_get_zone_plan() {
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+    if ( empty( $zone_id ) ) {
+        return '';
+    }
+    $cached = get_transient( 'cf_smart_cache_zone_plan' );
+    if ( $cached ) {
+        return $cached;
+    }
+    $response = cf_smart_cache_http_request(
+        "https://api.cloudflare.com/client/v4/zones/{$zone_id}",
+        array( 'method' => 'GET', 'timeout' => 15 ),
+        'fetch zone plan'
+    );
+    if ( is_wp_error( $response ) ) {
+        return '';
+    }
+    $body = json_decode( wp_remote_retrieve_body( $response ), true );
+    if ( empty( $body['success'] ) || ! isset( $body['result']['plan']['id'] ) ) {
+        return '';
+    }
+    // Extract plan id: 'free', 'pro', 'business', 'enterprise'.
+    $plan = $body['result']['plan']['id'];
+    // Normalise legacy plan names.
+    $known = array( 'free', 'pro', 'business', 'enterprise' );
+    foreach ( $known as $p ) {
+        if ( false !== stripos( $plan, $p ) ) {
+            $plan = $p;
+            break;
+        }
+    }
+    set_transient( 'cf_smart_cache_zone_plan', $plan, DAY_IN_SECONDS );
+    return $plan;
+}
+
+/**
+ * Return plan-specific limits.
+ */
+function cf_smart_cache_get_plan_limits( $plan_id = '' ) {
+    $limits = array(
+        'free'     => array( 'max_page_rules' => 3,  'edge_cache_ttl_min' => 7200 ),
+        'pro'      => array( 'max_page_rules' => 20, 'edge_cache_ttl_min' => 0 ),
+        'business' => array( 'max_page_rules' => 50, 'edge_cache_ttl_min' => 0 ),
+        'enterprise' => array( 'max_page_rules' => 125, 'edge_cache_ttl_min' => 0 ),
+    );
+    if ( ! $plan_id || ! isset( $limits[ $plan_id ] ) ) {
+        // Safe fallback for unknown plans.
+        return array( 'max_page_rules' => 3, 'edge_cache_ttl_min' => 7200, 'unknown_plan' => true );
+    }
+    return $limits[ $plan_id ];
+}
+
+/**
  * Fetch existing Page Rules from Cloudflare (cached 24h).
  */
 function cf_smart_cache_get_page_rules() {
@@ -1339,14 +1402,19 @@ function cf_smart_cache_get_config_status() {
     $site_domain         = cf_smart_cache_get_site_domain();
     $zone_id             = $settings['cf_smart_cache_zone_id'] ?? '';
     $api_token           = $settings['cf_smart_cache_api_token'] ?? '';
+    $plan                = cf_smart_cache_get_zone_plan();
+    $plan_limits         = cf_smart_cache_get_plan_limits( $plan );
 
     $status = array(
         'zone_name'            => $zone_name,
         'site_domain'          => $site_domain,
-        'plan'                 => $settings['rate_limit_cf_plan'] ?? 'free',
+        'plan'                 => $plan ?: 'free',
+        'plan_limits'          => $plan_limits,
         'api_token_set'        => ! empty( $api_token ),
         'zone_id_set'          => ! empty( $zone_id ),
         'page_rule'            => array( 'status' => 'unknown', 'id' => null, 'pattern' => null ),
+        'page_rules_used'      => 0,
+        'page_rule_available'  => null,
         'explicit_cc'          => array( 'status' => 'unknown', 'current' => null ),
         'dns_records'          => array(),
         'backup_count'         => 0,
@@ -1358,6 +1426,8 @@ function cf_smart_cache_get_config_status() {
         $pattern   = "*{$zone_name}/*";
         $rules     = cf_smart_cache_get_page_rules();
         if ( ! is_wp_error( $rules ) ) {
+            $status['page_rules_used'] = count( $rules );
+            $status['page_rule_available'] = max( 0, ( $plan_limits['max_page_rules'] ?? 3 ) - count( $rules ) );
             $our = cf_smart_cache_find_our_rule( $rules, $pattern );
             if ( $our ) {
                 $is_active = ( $our['status'] ?? '' ) === 'active';
