@@ -32,14 +32,20 @@
 
 這是一個功能齊全的 WordPress 插件，整合了 Cloudflare 邊緣緩存和自動清除功能，包括：
 
-- 使用 Cloudflare API Token 認證的 Edge HTML 緩存
+- Cloudflare API Token 認證的 Edge HTML 緩存
 - 自動清除緩存機制（Post、Category、Term 變化時）
+- 生產級 Rate Limiting（滑動時窗 + Token Bucket + Exponential Backoff + Jitter）
+- 動態 TTL（內容感知：首頁/文章/歸檔/feed 不同 TTL）+ stale directives
+- 雙層 Purge URL 快取（wp_cache per-request + post_meta cross-request hash）
 - 高級管理控制面板（Settings 頁面）
-- 詳細的 Log 和錯誤處理
-- API Rate Limiting 和批次處理
-- 支援多種 Post Type
+- 緩存統計儀表板（Hits/Misses/Hit Rate/Bypass Reasons）
+- 詳細的 Log 和錯誤處理（Enhanced Log 含 context + rolling 50 entries）
+- 支援多種 Post Type（public CPT 自動偵測）
 - REST API Cache Headers
 - 開發者 Hooks 和 Filters
+- 一鍵 Auto-Configuration Wizard（Page Rule / Origin Cache Control / DNS Proxy）
+- Plan-Aware Configuration（自動偵測 Cloudflare Plan 限制）
+- 備份/回滾機制（最多 3 版快照，ID 精確還原）
 
 ---
 
@@ -64,13 +70,17 @@ cloudflare-smart-cache/
 ├── memory/
 │   ├── tasks.md                   # AI 任務追蹤（待辦 / 進行中 / 完成）
 │   └── YYYY-MM-DD.md              # 每日 AI 工作日誌
-├── cf-smart-cache/                # 插件核心代碼
-│   ├── cf-smart-cache.php         # 插件入口
+├── cf-smart-cache/                # 插件核心代碼（2,558 行 PHP）
+│   ├── cf-smart-cache.php         # 插件入口（81 行）
 │   ├── admin/                     # 管理後台代碼
-│   │   └── admin.php              # 設置頁面、管理 UI
+│   │   └── admin.php              # 設置頁面、管理 UI（913 行）
 │   ├── includes/                  # 核心邏輯
-│   │   └── core.php               # 緩存、API、Hooks、工具函數
-│   └── uninstall.php              # 解除安裝清理
+│   │   └── core.php               # 緩存、API、Hooks、工具函數（1,499 行）
+│   ├── languages/                 # 語言文件
+│   │   └── .keep
+│   ├── assets/                    # 資源文件
+│   │   └── logo.png
+│   └── uninstall.php              # 解除安裝清理（65 行）
 ├── website/                       # 文檔網站（VitePress）
 │   ├── .vitepress/                # VitePress 配置
 │   ├── index.md                   # 主頁
@@ -234,6 +244,7 @@ cloudflare-smart-cache/
 | Configuration | API Token / Zone ID 配置狀態（✔/✘） | `get_option('cf_smart_cache_settings')` |
 | Cache Performance | Hits、Misses、Hit Rate、Cached URLs Tracked、Last Bypass Reason | `cf_smart_cache_get_cache_stats()` |
 | Bypass Reasons | 7 種原因計數表（降冪排序） | `cf_smart_cache_get_bypass_reasons()` |
+| Rate Limit | Governor State、Window Usage、429s Count、Queue Pending | `cf_smart_cache_rate_state` / `cf_smart_cache_purge_queue` |
 | Recent Cached URLs | 最近 10 筆被快取的 URL | `cf_smart_cache_get_cached_urls(10)` |
 
 ### 核心函數（core.php）
@@ -264,6 +275,13 @@ cloudflare-smart-cache/
 | `cf_smart_cache_cached_urls` | 最近 1000 個 URL | 1 小時 |
 | `cf_smart_cache_bypass_reasons` | 各原因計數 | 1 小時 |
 | `cf_smart_cache_last_bypass_reason` | 最近一次原因 | 1 小時 |
+| `cf_smart_cache_rate_state` | 滑動時窗狀態機 | 1 小時 |
+| `cf_smart_cache_purge_bucket` | Token Bucket 狀態 | 1 小時 |
+| `cf_smart_cache_purge_queue` | Debounced Purge 佇列 | 30 秒 |
+| `cf_smart_cache_recent_logs` | Rolling 50 筆 Log | 1 小時 |
+| `cf_smart_cache_zone_list` | Zone 列表 | 1 小時 |
+| `cf_smart_cache_zone_plan` | Zone Plan ID | 24 小時 |
+| `cf_smart_cache_page_rules` | Page Rules 列表 | 24 小時 |
 
 ### 設計決策
 
@@ -272,11 +290,46 @@ cloudflare-smart-cache/
 - **URL 1000 筆上限**：超過自動 `array_slice(-1000)`
 - **零外部依賴**：admin 儀表板只用 HTML 表格，不引入 Chart.js
 
-### 已知陷阱（昨日學到的教訓）
+---
 
-> ⚠️ **昨日 (2026-06-27) 的「Cache Statistics 功能」只有設計文檔，無實質代碼**。未來工作日誌必須明確區分「設計」與「實作完成」。
+## Auto-Configuration Wizard（v2.3.2 新增）
 
-> ⚠️ **函數命名對齊**：設計文檔寫 `cf_smart_cache_record_bypass()`，實作採用 `cf_smart_cache_record_bypass_reason()`。所有呼叫點必須與定義一致。
+`cf-smart-cache/admin/admin.php` 內的 `cf_smart_cache_display_auto_config()` 在 Settings > CF Smart Cache 頁面底部渲染一個完整的設定精靈區塊。
+
+### 功能
+
+| 功能 | 說明 |
+|------|------|
+| **狀態偵測** | `cf_smart_cache_get_config_status()` 回傳 Zone/Plan/Page Rule/Origin CC/DNS Proxy/Backup 完整狀態 |
+| **Page Rule 套用** | 建立或更新規則，payload 含 `cache_level=cache_everything` + `explicit_cache_control=on`（避免 `edge_cache_ttl=0` 被 Free plan 拒絕） |
+| **DNS Proxy** | 批次 PATCH 啟用 orange cloud，支援 root-only 或全部策略 |
+| **設定備份** | 最多 3 版快照存放於 `cf_smart_cache_config_backups` option |
+| **回滾** | 回滾前自動備份目前狀態，ID 精確匹配還原 |
+
+### Plan-Aware Configuration（v2.3.2 Phase 4b）
+
+| 函數 | 用途 |
+|------|------|
+| `cf_smart_cache_get_zone_plan()` | GET /zones/{zone_id} 回傳 plan id（free/pro/business/enterprise），transient 24h |
+| `cf_smart_cache_get_plan_limits($plan)` | 靜態對照表：max_page_rules、edge_cache_ttl_min |
+
+**Plan 限制表**
+
+| Plan | Max Page Rules | edge_cache_ttl_min |
+|------|---------------|-------------------|
+| free | 3 | 7200 |
+| pro | 20 | 0 |
+| business | 50 | 0 |
+| enterprise | 125 | 0 |
+
+**Admin UI Zone 行顯示**：`Zone: example.com (FREE) — Page Rules: 2/3 used`
+
+### 已知的 API 限制
+
+1. **`explicit_cache_control`** 不是 Zone-level 設定，只存在於 Page Rule action
+2. **`edge_cache_ttl=0`（Respect Existing Headers）** 在 Free plan 不接受，最低 7200s
+3. **Partner/Reseller 的 plan.id** 可能是 UUID，需 fallback 到 `plan.name`
+4. **Token 權限無法預先驗證** — `/token/verify` 不回傳 scope 列表，採 fail-and-tell
 
 ---
 
@@ -310,13 +363,16 @@ if (is_user_logged_in()) {
 ### Transient 使用策略
 
 1. **短暫快取**（1-3600 秒）
-   - Zone 列表：24 小時
-   - Rate Limit 狀態：5 分鐘
+   - Zone 列表：1 小時
+   - Zone Plan：24 小時
+   - Page Rules：24 小時
+   - Rate Limit 狀態：1 小時
    - 最近 Log：1 小時
 
 2. **批量操作**
-   - Purge URLs 使用批次請求
+   - Purge URLs 使用批次請求（chunked, max 30-100 per batch）
    - 避免 API 請求過多
+   - Debounced Queue 合併 2 秒內的清除請求
 
 3. **Lazy Loading**
    - Admin 數據按需載入
@@ -495,7 +551,10 @@ if (is_user_logged_in()) {
 
 ## 變更日誌
 
-- **2.3.2** (2026-07-05) — Auto-Configuration Wizard：一鍵偵測/套用/備份/回滾 Cloudflare Page Rule, Origin Cache Control, DNS Proxy 設定
+- **2.3.2** (2026-07-05) — Auto-Configuration Wizard + Plan-Aware Configuration（Phase 4a + 4b）
+  - 一鍵偵測/套用/備份/回滾 Cloudflare Page Rule, Origin Cache Control, DNS Proxy 設定
+  - Plan-Aware：自動查詢 zone plan 決定可用參數（Free plan edge_cache_ttl_min=7200）
+  - Bug 修復：auth header 注入、explicit_cache_control 非 Zone setting、DNS name 正規化、UUID plan ID 處理
 - **2.3.1** (2026-07-05) — 緩存機制核心優化 Phase 1：廢棄舊式 purge0/1/2 系統、動態 TTL + stale directives、Purge URL 生成快取（wp_cache + post meta）
 - **2.3.0** (2026-07-05) — 生產級 Rate Limiting 優化：滑動時窗、Token Bucket、Exponential Backoff with Jitter、Adaptive Limit、Debounced Purge Queue、HTTP Executor Retry Layer、Admin Dashboard 可視化
 - **2.2.0** (2026-06-28) — 緩存統計功能 (Cache Statistics Dashboard)、修復 cf_smart_cache_display_cache_status undefined fatal error、修正函數命名對齊

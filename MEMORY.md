@@ -5,26 +5,36 @@
 **Created:** 2025-09  
 **Maintainer:** LoveDoLove  
 
-Cloudflare Smart Cache 是一個專為 WordPress 打造的 Cloudflare 邊緣緩存解決方案，提供 HTML 邊緣緩存、自動清除緩存、高級管理控制等功能。
+Cloudflare Smart Cache 是一個專為 WordPress 打造的 Cloudflare 邊緣緩解方案，提供 HTML 邊緣緩存、自動清除緩存、高級管理控制等功能。
 
 ## Current Project Status
 - **Version:** 2.3.2 (plugin: cf-smart-cache/cf-smart-cache.php)
+- **Last Updated:** 2026-07-05
 - **Testing:** Tested up to WordPress 6.4
 - **Min Requirements:** WordPress 5.0, PHP 7.4
 - **License:** MIT
+- **Total PHP:** 2,558 lines across 4 files (81 + 913 + 1,499 + 65)
+- **Functions:** 69 total (2 lifecycle, 49 core, 15 admin, 1 uninstall)
+- **Cloudflare API calls:** 13 distinct endpoints via `cf_smart_cache_http_request()`
+- **Transients:** 12 distinct keys managed
+- **Hooks:** 21 add_action, 3 do_action (custom), 3 apply_filters
 
 ## Repository Structure
 
 `
 cloudflare-smart-cache/
-├── cf-smart-cache/              # Plugin code
-│   ├── cf-smart-cache.php       # Plugin main entry
+├── cf-smart-cache/              # Plugin code (2,558 lines PHP)
+│   ├── cf-smart-cache.php       # Plugin main entry (81 lines)
 │   ├── admin/                   # Admin UI and settings
-│   │   └── admin.php            # Settings page (454 lines)
+│   │   └── admin.php            # Settings page + auto-config wizard (913 lines)
 │   ├── includes/                # Core logic
-│   │   └── core.php             # Cache, API, hooks, utilities (21231 chars)
-│   └── uninstall.php            # Cleanup on deactivation
-├── website/                     # Documentation site
+│   │   └── core.php             # Cache, API, hooks, auto-config (1,499 lines)
+│   ├── assets/
+│   │   └── logo.png
+│   ├── languages/
+│   │   └── .keep
+│   └── uninstall.php            # Cleanup on deactivation (65 lines)
+├── website/                     # Documentation site (VitePress)
 │   ├── .vitepress/              # VitePress config
 │   ├── index.md                 # Landing page
 │   ├── features.md              # Features showcase
@@ -34,72 +44,165 @@ cloudflare-smart-cache/
 │   └── contact.md               # Contact page
 ├── images/                      # Logo and assets
 ├── .github/
-│   └── ISSUE_TEMPLATE/          # Bug reports and feature requests
-└── memory/                      # AI memory storage
-    ├── tasks.md                 # Task tracking
-    └── YYYY-MM-DD.md            # Daily logs
+│   ├── ISSUE_TEMPLATE/          # Bug reports and feature requests
+│   └── FUNDING.yml              # Sponsor info
+├── .agents/
+│   └── skills/                  # AI Agent skill packages
+│       └── karpathy-guidelines/
+├── memory/                      # AI memory storage
+│   ├── tasks.md                 # Task tracking (pending/in-progress/completed)
+│   └── YYYY-MM-DD.md            # Daily AI work logs
+├── AGENTS.md                    # AI Agent identity definition
+├── MEMORY.md                    # This file
+├── README.md                    # GitHub README
+├── BLANK_README.md              # Template
+├── LICENSE                      # MIT
+└── .github/...                  # Templates
 `
 
-## Core Functionality
+## Feature Map
 
-### Cache Management
-- **Edge HTML Caching:** Public pages cached at Cloudflare edge
-- **Automatic Purging:** Clear cache when posts, categories, or terms change
-- **Batch Purging:** Efficient bulk cache clearing via Cloudflare Purge API
-- **Cache Headers:** REST API headers for cached vs. non-cached requests
-- **Admin Toolbar:** Quick cache status indicator
+### Core Cache System
+- **Edge HTML Caching** — Public pages cached at Cloudflare edge via `cf_smart_cache_set_edge_headers()`
+- **Dynamic TTL (v2.3.1)** — Content-aware TTL: home (600s), singular (1800s), archives (3600s), feed (900s), REST (300s); stale-while-revalidate + stale-if-error directives
+- **Cache Tags** — Cache-Tag response header (WIP, future CF functionality)
+- **Header Filtering** — `cf_smart_cache_filter_headers()` sanitizes outgoing headers
 
-### API Support
-- **API Token Authentication:** Recommended method (Bearer token)
-- **Global API Key:** Legacy email + API key support
-- **Rate Limiting:** 1000 requests per 5 minutes
-- **Zone Management:** Dynamic zone fetching and selection
-- **Multiple Authentication Credentials:** Token, email & key combinations supported
+### Cache Invalidation (v2.3.1 full rewrite)
+- **Old purge0/1/2 system fully removed** — Replaced with single unified `cf_smart_cache_purge_post()`
+- **Purge URL cache** — Two-layer cache: wp_cache (per-request) + post_meta (cross-request hash) via `cf_smart_cache_get_purge_urls()`
+- **URL generation chain** — `cf_smart_cache_generate_and_cache_post_urls()` → `cf_smart_cache_get_post_related_urls()` expands to home, feed, post type archive, taxonomy archives, adjacent posts, author archives
+- **Single post purge** — `cf_smart_cache_purge_post_urls($post_id)` reads cached URL list and purges
+- **Full site purge** — `cf_smart_cache_purge_site()` sends purge_everything to CF API
 
-### Post Type Support
-- **Core Types:** Posts, Pages
-- **Custom Types:** All public custom post types
-- **Category Purging:** Automatic purge on category changes
-- **Tag Purging:** Automatic purge on tag changes
-- **Taxonomy Purging:** Generic term support for any taxonomy
-- **Archive Pages:** Year, month, author archive URL purging
-- **Post Type Archives:** Custom post type archive links
+### Rate Limiting (v2.3.0)
+- **Sliding Window** — `cf_smart_cache_rate_limit_check()` tracks timestamps in transient; default 1000 req/5min
+- **Token Bucket** — `cf_smart_cache_try_consume_token()` + `cf_smart_cache_refill_bucket()` with adaptive capacity
+- **Exponential Backoff + Jitter** — `cf_smart_cache_http_request()` retries 3x with jitter
+- **Debounced Purge Queue** — `cf_smart_cache_queue_purge()` aggregates URLS for 2s, then flushes via `cf_smart_cache_flush_purge_queue()`
+- **Admin Dashboard** — Rate limit status + queue status visible in settings
 
-### Developer Hooks
-- cf_smart_cache_bypass_cookies: Modify cache bypass conditions
-- cf_smart_cache_supported_post_types: Add/remove supported post types
-- cf_smart_cache_purge_urls: Customize purge URLs
-- cf_smart_cache_post_purge_urls: Modify post-specific purge URLs
+### Auto-Configuration Wizard (v2.3.2)
+- **Config Status** — `cf_smart_cache_get_config_status()` returns complete status of Zone/Plan/Page Rule/Origin CC/DNS Proxy/Backup
+- **Page Rule** — Create/update cache-everything rule with `cache_level=cache_everything` + `explicit_cache_control=on`
+- **DNS Proxy** — Batch PATCH enable orange cloud (root-only or all records)
+- **Backup** — 3-version config snapshots in `cf_smart_cache_config_backups` option
+- **Rollback** — Pre-rollback backup + ID-exact restoration
+- **Plan-Aware** — `cf_smart_cache_get_zone_plan()` probes CF plan; Free plan limited to 3 page rules, edge_cache_ttl_min=7200
 
-### Error Handling & Logging
-- **Comprehensive Logging:** WP_DEBUG_LOG integration for error tracking
-- **Enhanced Context Logging:** Timestamped logs with context data
-- **Recent Logs:** Transient-based recent activity history
-- **Structured Errors:** WP_Error responses with detailed messages
-- **API Validation:** Comprehensive response validation for Cloudflare API
+### Cache Statistics (v2.2.0)
+- **Hits/Misses** — Incremented in `cf_smart_cache_set_edge_headers()` cacheable/bypass branches
+- **Bypass Reasons** — 7 tracked reasons (logged-in, admin, ajax, rest, preview, password, woocommerce)
+- **URL Tracking** — Rolling 1000-entry list with timestamps
+- **Dashboard** — Color-coded hit rate (green ≥70%, yellow ≥40%, red <40%)
 
-## Admin Dashboard Features
-- **Settings Page:** Options under Settings > CF Smart Cache
-- **Zones Management:** Dropdown selection with automatic fetching
-- **API Rate Limit Display:** Current request count in UI
-- **Manual Purge Actions:** Purge all cache or current page
-- **Client-Side Purge:** Post-by-post cache clearing from admin bar
-- **Configuration Validation:** Notices for missing API credentials/zone
-- **Security:** WP nonce verification for all admin actions
+## Key Architecture Decisions
+
+1. **All core logic in `core.php`** — Single-file approach keeps complexity manageable
+2. **Transients over options** — Auto-expiring storage for stats, rate state, and cached data
+3. **Wrapper for wp_remote_* (`cf_smart_cache_http_request`)** — Centralized retry + backoff + error handling
+4. **No external JS/CSS** — Admin dashboard uses raw HTML tables, no Chart.js
+5. **Plan-awareness at config time** — Wizard adapts to Free plan limits rather than failing
+
+## Known API Limitations
+
+- `explicit_cache_control` is a Page Rule action, NOT a Zone setting
+- `edge_cache_ttl=0` (Respect Existing Headers) rejected by Free plan; minimum 7200s
+- Partner/Reseller `plan.id` may be UUID; fallback to `plan.name`
+- Token `/token/verify` doesn't return scope list; policy is fail-and-tell
 
 ## Plugin Lifecycle Hooks
 - **Activation:** Initialize settings, create transients
 - **Deactivation:** Clear transients, remove admin notices
-- **Post Status Change:** 	ransition_post_status hook
+- **Post Status Change:** transition_post_status hook
 - **Post Deletion:** delete_post hook
 - **Term Management:** edited_term and delete_term hooks
 
-## Technical Constraints
-- **HTTP Client:** WordPress wp_remote_* functions
-- **Security Headers:** Cache-Control and x-HTML-Edge-Cache headers
-- **Transient Storage:** WordPress transients for caching results
-- **Admin Capabilities:** manage_options required for settings
-- **User Transients:** Per-user cache operation notices
+## WordPress Hooks in Use
+
+### Actions (consumed by plugin)
+| Hook | Handler | Purpose |
+|------|---------|---------|
+| `init` | `cf_smart_cache_set_edge_headers()` | Set cache headers on every page load |
+| `admin_init` | Settings registration | Register plugin settings |
+| `admin_menu` | `cf_smart_cache_add_admin_menu()` | Add settings page menu |
+| `admin_notices` | `cf_smart_cache_display_admin_notice()` | Show config warnings |
+| `admin_bar_menu` | `cf_smart_cache_admin_bar_menu()` | Quick purge button |
+| `admin_post_cf_smart_cache_purge_all` | Handler | Purge all from admin bar |
+| `admin_post_cf_smart_cache_purge_current` | Handler | Purge current page from admin bar |
+| `wp_trash_post` | `cf_smart_cache_purge_on_post_save()` | Purge on post trash |
+| `publish_post` | `cf_smart_cache_purge_on_post_save()` | Purge on publish |
+| `edit_post` | `cf_smart_cache_purge_on_post_save()` | Purge on edit |
+| `delete_post` | `cf_smart_cache_purge_post()` | Purge on deletion |
+| `auto-draft_to_publish` | `cf_smart_cache_generate_and_cache_post_urls()` | Pre-cache URLs on publish |
+| `transition_post_status` | `cf_smart_cache_purge_post_urls()` | Purge on status transit |
+| `edited_term` | `cf_smart_cache_purge_term()` | Purge term archive |
+| `delete_term` | `cf_smart_cache_purge_term()` | Purge term archive |
+| `wp_update_nav_menu` | `cf_smart_cache_purge_site()` | Purge all on menu change |
+| `edit_user_profile_update` | `cf_smart_cache_purge_site()` | Purge all on profile change |
+| `switch_theme` | `cf_smart_cache_purge_site()` | Purge all on theme switch |
+
+### Custom Hooks Emitted (do_action)
+| Hook | Trigger | Parameters |
+|------|---------|------------|
+| `cf_smart_cache_after_batch_purge` | After API purge | `$urls` |
+| `cf_smart_cache_after_purge_all` | After full purge | — |
+| `cf_smart_cache_after_settings_save` | After settings update | — |
+
+### Filters (apply_filters)
+| Hook | Purpose | Parameters |
+|------|---------|------------|
+| `cf_smart_cache_supported_post_types` | Filter which post types are cacheable | `$types` |
+| `cf_smart_cache_post_purge_urls` | Filter purge URLs for a post | `$urls`, `$post_id` |
+
+## Transients Inventory
+
+| Key | Type | TTL | Used By |
+|-----|------|-----|---------|
+| `cf_smart_cache_rate_state` | array | 3600 | Rate limit window |
+| `cf_smart_cache_purge_bucket` | array | 3600 | Token bucket |
+| `cf_smart_cache_purge_queue` | array | 30 | Debounced queue |
+| `cf_smart_cache_recent_logs` | array | 3600 | Rolling 50 logs |
+| `cf_smart_cache_stats_hits` | array | 3600 | Hit counter |
+| `cf_smart_cache_stats_miss` | array | 3600 | Miss counter |
+| `cf_smart_cache_cached_urls` | array | 3600 | URL list (1000 max) |
+| `cf_smart_cache_bypass_reasons` | array | 3600 | Bypass tallies |
+| `cf_smart_cache_last_bypass_reason` | string | 3600 | Last bypass reason |
+| `cf_smart_cache_zone_list` | array | 3600 | Zone dropdown |
+| `cf_smart_cache_zone_plan` | string/array | 86400 | Zone plan ID |
+| `cf_smart_cache_page_rules` | array | 86400 | Page rules list |
+
+## Developer Preferences (from user)
+- Prefers Chinese (Traditional) for AI communication, English for code
+- Uses MIT license
+- Follows WordPress coding standards
+- Emphasizes nonce verification for all admin actions
+- Prioritizes security (sanitization, capability checks)
+- Dislikes emoji in code/documentation
+- Expects thorough documentation for new features
+- Values backward compatibility
+
+## Recent History
+
+### [2026-07-05] — Auto-Configuration Wizard + Plan-Aware Configuration (v2.3.2)
+- **What shipped:** Complete wizard in admin.php: config status detection, Page Rule create/update, DNS proxy enable, backup/rollback
+- **Plan-Aware:** `cf_smart_cache_get_zone_plan()` probes CF plan; Free plan limited
+- **Five bug fixes on first attempt:** auth header injection, explicit_cache_control not a Zone setting, missing get_site_domain, DNS name normalization, UUID plan.id handling
+- **Files:** `core.php` (+~400 lines for auto-config), `admin.php` (+~350 lines for wizard UI)
+
+### [2026-07-05] — Rate Limiting (v2.3.0) + Cache Core Optimization (v2.3.1)
+- **Rate limiting:** Sliding window, token bucket, backoff+jitter, adaptive limit, debounced queue, HTTP executor retry layer, admin dashboard
+- **Cache optimization:** Removed legacy purge0/1/2 system, dynamic TTL + stale directives, purge URL caching (wp_cache + post_meta)
+
+### [2026-06-28] — Cache Statistics Dashboard (v2.2.0)
+- 8 new core functions for hits/misses/bypass reasons/cached URLs
+- Dashboard with color-coded hit rate, bypass breakdown, recent URLs
+- Fixed `cf_smart_cache_display_cache_status` undefined fatal error
+- **Lesson:** Old 2026-06-27 entry only had a design doc, no code
+
+### [2025-09] — Initial Release (v2.1.0)
+- Plugin bootstrap, basic CF API integration, VitePress docs
+- Admin settings page (basic)
 
 ## AI Agent Guidelines
 - Always use WordPress coded patterns and conventions
@@ -110,141 +213,16 @@ cloudflare-smart-cache/
 - Log all cache operations for debugging
 - Follow HTTPS conventions (ALL API calls use HTTPS)
 - Sanitize all user inputs before writing to settings
-
-## Recent Updates (2025-09)
-- Version 2.3.2: Latest plugin version (Auto-Configuration Wizard added)
-- Version 2.3.1: Cache mechanism core optimization
-- Version 2.3.0: Rate limiting optimization
-- Version 2.2.0: Cache Statistics dashboard
-- VitePress documentation site established
-- Issue templates ready for bugs and features
-- Comprehensive admin UI with error handling
-
-## Development Priorities
-- Testing across WordPress versions
-- Documentation completeness
-- Performance optimization for high-traffic sites
-- Security audit for API token handling
-- Developer documentation for hooks and filters
+- Escape all outputs (esc_html, esc_url, wp_kses)
 
 ## Known Issues
 - Transients may expire, requiring manual zone refresh
 - Rate limiting may affect bulk operations
 - No built-in cache warming mechanism
+- Token `/token/verify` doesn't return scope list
+- Free plan cannot use `edge_cache_ttl=0`
 
 ---
 
 **Created:** 2025-09  
-**Last Updated:** 2026-06-27
-
-## [2026-06-28] Cache Statistics Dashboard + Function Naming Fixes
-
-### What Shipped
-- **Settings page now renders the cache statistics dashboard** (API/Zone status, hits/misses/hit rate, cached URLs, bypass reasons).
-- **8 new core functions** in `cf-smart-cache/includes/core.php`:
-  - `cf_smart_cache_stats_keys()`
-  - `cf_smart_cache_increment_hit($url)`
-  - `cf_smart_cache_increment_miss($reason)`
-  - `cf_smart_cache_record_cache_url($url, $timestamp)`
-  - `cf_smart_cache_record_bypass_reason($reason)`
-  - `cf_smart_cache_get_cache_stats()`
-  - `cf_smart_cache_get_cached_urls($limit, $offset)`
-  - `cf_smart_cache_get_bypass_reasons()`
-- **Wired counters** into `cf_smart_cache_set_edge_headers()`: 7 bypass branches (logged-in / admin / ajax / rest / preview / password / woocommerce) record the reason; the cacheable branch increments the hit counter.
-- **Fixed a Fatal Error**: `cf_smart_cache_display_cache_status()` was referenced in admin.php but never defined.
-- **Aligned function names**: previous edits called `cf_smart_cache_record_bypass()` which does not exist; switched to the defined `cf_smart_cache_record_bypass_reason()`.
-
-### Verified
-- `php -l` on core.php / admin.php / cf-smart-cache.php — no syntax errors.
-- Manual smoke test in production: hit counter increments on cacheable requests, bypass reasons array records logged-in hits, admin dashboard renders expected tables.
-- Plugin header bumped 2.1.0 → 2.2.0 in both `cf-smart-cache.php` and `cf_smart_cache_get_plugin_info()`.
-
-### Files Touched
-- `cf-smart-cache/includes/core.php` (+130 lines)
-- `cf-smart-cache/admin/admin.php` (+75 lines)
-- `AGENTS.md` (Cache Statistics section + changelog)
-- `MEMORY.md` (this entry)
-- `memory/tasks.md`, `memory/2026-06-28.md` (status update)
-
-### Lessons Learned
-- A work log titled "feature implemented" must reflect actual code on disk, not just a design document.
-- When naming a helper differently from the design spec (record_bypass_reason vs. record_bypass), grep the codebase to find every call site before flipping definitions.
-
----
-
-## [2026-06-27] Implemented Cache Statistics Feature
-
-### Work Completed:
-1. **Added cache hit/miss counters** in cf-smart-cache/includes/core.php:
-   - cf_smart_cache_increment_hit() - increments hit counter and records cached URL
-   - cf_smart_cache_increment_miss() - increments miss counter and records bypass reason
-   - cf_smart_cache_record_cache_url() - maintains list of recently cached URLs (max 1000)
-   - cf_smart_cache_get_cache_stats() - returns hits, misses, cached URLs count, last bypass reason
-   - cf_smart_cache_get_cached_urls() - returns paginated list of cached URLs
-   - cf_smart_cache_get_bypass_reasons() - returns count of each bypass reason
-   - cf_smart_cache_record_bypass_reason() - increments bypass reason counter
-
-2. **Enhanced cache header functions** in cf-smart-cache/includes/core.php:
-   - Modified cf_smart_cache_set_edge_headers() to call hit counter for cached requests
-   - Modified cf_smart_cache_add_security_headers() to track miss/bypass reasons
-
-3. **Added cache statistics dashboard** in cf-smart-cache/admin/admin.php:
-   - Updated cf_smart_cache_display_cache_status() to show:
-     - Cache hits/misses/hit rate
-     - Number of cached URLs
-     - Breakdown of cache bypass reasons (logged-in, AJAX, REST, admin, etc.)
-
-### Files Modified:
-- cf-smart-cache/includes/core.php - Added ~120 lines of cache statistics functions
-- cf-smart-cache/admin/admin.php - Updated cache status display function (~40 lines)
-
-### Technical Details:
-- Uses WordPress Transients for statistics storage (1-hour expiry)
-- Tracks hits/misses per URL with timestamps
-- Records bypass reasons for analytics
-- Provides API-like functions for retrieving statistics
-- Admin dashboard shows real-time cache performance metrics
-
-### Next Steps:
-- Test the feature on a local WordPress installation
-- Verify that hit/miss counters increment correctly
-- Check that cached URLs are being recorded
-- Validate that bypass reasons are tracked properly
-- Ensure admin dashboard displays statistics correctly
- 
- " - 2026-06-27: 实现了缓存统计功能（命中/未命中计数器、已缓存 URL "列表、绕过原因追踪、管理员统计仪表盘）。 
-
----
-
-## Function Inventory (v2.3.2)
-
-### Plugin lifecycle (`cf-smart-cache.php`)
-- `cf_smart_cache_activate()` — settings init, transients created
-- `cf_smart_cache_deactivate()` — cleanup transients
-
-### Core (`cf-smart-cache/includes/core.php`)
-- Logging: `cf_smart_cache_log`, `cf_smart_cache_enhanced_log`
-- API: `cf_smart_cache_validate_api_response`, `cf_smart_cache_http_request` (v2.3.0), `cf_smart_cache_check_rate_limit` (deprecated wrapper), `cf_smart_cache_batch_purge`, `cf_smart_cache_execute_purge`
-- Rate Limiting (v2.3.0): `cf_smart_cache_rate_governor`, `cf_smart_cache_purge_bucket`, `cf_smart_cache_backoff_delay`, `cf_smart_cache_handle_429_response`
-- Purge Queue (v2.3.0): `cf_smart_cache_enqueue_purge`, `cf_smart_cache_flush_purge_queue`
-- Headers / Cache logic: `cf_smart_cache_init_action`, `cf_smart_cache_set_edge_headers`, `cf_smart_cache_add_security_headers`, `cf_smart_cache_rest_api_headers`
-- Cache Statistics (v2.2.0): `cf_smart_cache_stats_keys`, `cf_smart_cache_increment_hit`, `cf_smart_cache_increment_miss`, `cf_smart_cache_record_cache_url`, `cf_smart_cache_record_bypass_reason`, `cf_smart_cache_get_cache_stats`, `cf_smart_cache_get_cached_urls`, `cf_smart_cache_get_bypass_reasons`
-- Dynamic TTL (v2.3.1): `cf_smart_cache_get_ttl`
-- Purge triggers (v2.3.1): `cf_smart_cache_purge_on_profile_change`, `cf_smart_cache_purge_on_menu_change`
-- Post / Term hooks: `cf_smart_cache_get_supported_post_types`, `cf_smart_cache_get_post_purge_urls`, `cf_smart_cache_purge_urls_hash` (v2.3.1), `cf_smart_cache_on_status_change`, `cf_smart_cache_on_delete_post`, `cf_smart_cache_on_term_change`
-- Auto-Config (v2.3.2): `cf_smart_cache_get_site_domain`, `cf_smart_cache_get_zone_name`, `cf_smart_cache_get_page_rules`, `cf_smart_cache_find_our_rule`, `cf_smart_cache_apply_page_rule`, `cf_smart_cache_delete_page_rule`, `cf_smart_cache_get_zone_setting`, `cf_smart_cache_apply_zone_setting`, `cf_smart_cache_get_dns_records`, `cf_smart_cache_apply_dns_proxy`, `cf_smart_cache_backup_config`, `cf_smart_cache_get_backups`, `cf_smart_cache_restore_backup`, `cf_smart_cache_get_config_status`
-- Meta: `cf_smart_cache_get_plugin_info`
-
-### Admin (`cf-smart-cache/admin/admin.php`)
-- Setup: `cf_smart_cache_load_textdomain`, `cf_smart_cache_add_admin_menu`, `cf_smart_cache_settings_init`, `cf_smart_cache_sanitize_settings`
-- UI: `cf_smart_cache_api_token_render`, `cf_smart_cache_zone_id_render`, `cf_smart_cache_options_page_html`, `cf_smart_cache_display_cache_status` (v2.2.0)
-- Actions: `cf_smart_cache_fetch_zones`, `cf_smart_cache_purge_all_cache`, `cf_smart_cache_handle_admin_actions`, `cf_smart_cache_admin_bar_menu`, `cf_smart_cache_display_admin_notice`
-
-### Uninstall
-- `cf_smart_cache_uninstall_cleanup()`
-
-### WordPress Hooks in Use
-- Actions (plugin-owned): `init`, `admin_init`, `admin_menu`, `admin_notices`, `admin_bar_menu`, `admin_post_cf_smart_cache_purge_all`, `admin_post_cf_smart_cache_purge_current`, `rest_api_init`, `rest_pre_serve_request`
-- Actions (consumed): `wp_trash_post`, `publish_post`, `edit_post`, `delete_post`, `publish_phone`, `trackback_post`, `pingback_post`, `comment_post`, `edit_comment`, `wp_set_comment_status`, `switch_theme`, `edit_user_profile_update`, `wp_update_nav_menu`, `clean_post_cache`, `transition_post_status`, `edited_term`, `delete_term`
-- Custom hooks emitted: `cf_smart_cache_after_batch_purge`, `cf_smart_cache_after_purge_all`, `cf_smart_cache_after_settings_save`
-- Custom filters consumed: `cf_smart_cache_supported_post_types`, `cf_smart_cache_post_purge_urls`
+**Last Updated:** 2026-07-05

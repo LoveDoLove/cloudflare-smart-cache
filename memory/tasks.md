@@ -35,21 +35,24 @@
   1. **Cache Warming** — 清除後自動對熱門 URL 發送 HEAD 請求
   2. **排程全站清除** — WP-Cron 每日/每週定時全站清除
 
-#### [Phase 4] Auto-Configuration Wizard（中優先級）
+#### [Phase 4b] Plan-Aware Configuration（中優先級）
 - **狀態**：已完成
-- **優先級**：中
+- **優先級**：高
+- **commit**：c077b2b
 - **完成內容**：
-  1. **偵測層** — `cf_smart_cache_get_config_status()` 回傳完整的 Page Rule / Origin Cache Control / DNS Proxy / Backup 狀態
-  2. **Page Rule 執行** — `POST/PUT /pagerules` 建立或更新規則，payload 含 `cache_level=cache_everything` + `edge_cache_ttl=0` + `explicit_cache_control=on`
-  3. **Zone Settings 執行** — `PATCH /settings/explicit_cache_control → on`；`PATCH /settings/edge_cache_ttl` for rollback
-  4. **DNS Proxy 執行** — 批次 `PATCH /dns_records/{id} → proxied=true`，支援 root-only 或全部策略
-  5. **備份/回滾** — 最多 3 版快照（option `cf_smart_cache_config_backups`），回滾前自動再備份，ID 精確匹配還原
-  6. **Admin UI** — 狀態燈號 + 可勾選開關 + 策略下拉 + 4 按鈕（Backup/Apply/Rollback）
-- **影響文件**：
-  - cf-smart-cache/includes/core.php（+14 個新函數，~200 行）
-  - cf-smart-cache/admin/admin.php（+2 個新函數 ~130 行）
-- **驗證**：php -l 兩檔皆無語法錯誤
-- **版本**：提升至 2.3.2
+  1. `cf_smart_cache_get_zone_plan()` — GET /zones/{zone_id} 回傳 plan id，transient 24h
+  2. `cf_smart_cache_get_plan_limits($plan)` — 靜態對照表：max_page_rules、edge_cache_ttl_min
+  3. `get_config_status()` — 用 API plan 取代 rate_limit_cf_plan 設定值；新增 plan_limits、page_rules_used、page_rule_available
+  4. Admin UI — Zone 行改為「Zone: example.com (FREE) — Page Rules: 2/3 used」
+  5. Apply handler — Apply 前檢查 page_rule_available > 0，不足時跳過
+  6. Settings save hook 清除 zone_plan + page_rules transient
+  7. uninstall.php 清理新 transient
+
+#### 已知 Bug 修復（ae42631）
+- **根因**：所有 auto-config 函數呼叫 `cf_smart_cache_http_request()` 時遺漏 `Authorization: Bearer` header → 全 API 回傳 401/403，錯誤訊息被泛化吞掉
+- **修復**：
+  1. 在 `cf_smart_cache_http_request()` 自動注入 auth header（若呼叫方未明確設定）
+  2. 所有 inline API 回應檢查改為顯示 Cloudflare 原始錯誤訊息
 
 #### [轉換] 實作 PHP 單元測試框架
 - **狀態**：待決
@@ -88,6 +91,17 @@
 ---
 
 ## [完成 - Completed]
+
+### [2026-07-05] 全面掃描代碼庫 + 更新 AGENTS.md & MEMORY.md
+- **狀態**：已完成
+- **優先級**：高
+- **完成內容**：
+  - 對整個代碼庫進行深度掃描（glob + grep + read 所有文件）
+  - 精確統計：PHP 2,558 行共 69 個函數、21 個 add_action、12 個 transient key
+  - AGENTS.md：更新功能列表（含 v2.3.0-2.3.2 新功能）、代碼結構行列數、Transient 表格（10→12 項）、新增 Auto-Configuration Wizard / Plan-Aware Configuration 章節、更新變更日誌
+  - MEMORY.md：全面重寫 — Feature Map（細分 5 大功能域）、Key Architecture Decisions、WordPress Hooks 表格（21 行）、Transients Inventory（12 keys）、Recent History（完整 timeline）、Known API Limitations
+  - tasks.md：將 outdated 的函數名稱（rate_governor、batch_purge 等）保留為歷史記錄
+- **驗證**：未修改任何 PHP 文件；僅更新 .md 文檔
 
 ### [2026-07-05] 優化 Cloudflare API 請求速率限制（v2.3.0）
 - **狀態**：已完成
