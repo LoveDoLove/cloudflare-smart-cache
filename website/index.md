@@ -9,6 +9,8 @@ description: "Accelerate your WordPress site with advanced Cloudflare edge cachi
 
 Welcome to the Cloudflare Smart Cache plugin documentation.
 
+**Current Version: 2.2.0** — adds a Cache Statistics Dashboard under **Settings > CF Smart Cache** with live hit/miss counters, hit rate, cached URLs, and bypass-reason breakdown.
+
 ## Quick Links
 
 - [Features](./features.md "Explore plugin features")

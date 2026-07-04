@@ -4,7 +4,7 @@
  * Plugin Slug:       cf-smart-cache
  * Plugin URI:        https://github.com/LoveDoLove/cloudflare-smart-cache
  * Description:       Powerful all-in-one Cloudflare cache solution: edge HTML caching, automatic purging on post/category changes, advanced admin controls, API token support, and comprehensive logging for WordPress.
- * Version:           2.1.0
+ * Version:           2.3.2
  * Author:            LoveDoLove
  * Author URI:        https://github.com/LoveDoLove
  * License:           MIT
@@ -36,6 +36,9 @@ function cf_smart_cache_activate()
     }
     delete_transient('cf_smart_cache_zone_list');
     delete_transient('cf_smart_cache_rate_limit');
+    delete_transient('cf_smart_cache_rate_state');
+    delete_transient('cf_smart_cache_purge_bucket');
+    delete_transient('cf_smart_cache_purge_queue');
     if (function_exists('cf_smart_cache_log')) {
         cf_smart_cache_log('Plugin activated');
     }
@@ -49,6 +52,9 @@ function cf_smart_cache_deactivate()
 {
     delete_transient('cf_smart_cache_zone_list');
     delete_transient('cf_smart_cache_rate_limit');
+    delete_transient('cf_smart_cache_rate_state');
+    delete_transient('cf_smart_cache_purge_bucket');
+    delete_transient('cf_smart_cache_purge_queue');
     global $wpdb;
     $wpdb->query(
         "DELETE FROM {$wpdb->options} 

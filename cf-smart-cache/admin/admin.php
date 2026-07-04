@@ -1,4 +1,4 @@
-<?php
+﻿<?php
 // Admin-specific code for Cloudflare Smart Cache plugin (settings page, admin menu, admin UI, admin hooks)
 
 /**
@@ -70,6 +70,102 @@ function cf_smart_cache_settings_init()
         'cf_smart_cache',
         'cf_smart_cache_api_section'
     );
+    add_settings_section(
+        'cf_smart_cache_rate_limit_section',
+        __('Rate Limiting Settings', 'cf-smart-cache'),
+        null,
+        'cf_smart_cache'
+    );
+    add_settings_field(
+        'rate_limit_max',
+        __('Max Requests / Window', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $value = isset($options['rate_limit_max']) ? esc_attr($options['rate_limit_max']) : '1000';
+            printf(
+                '<input type="number" name="cf_smart_cache_settings[rate_limit_max]" value="%s" class="small-text" min="100" max="1200" step="50"> <span class="description">%s</span>',
+                $value,
+                esc_html__('Requests per 5-minute sliding window (max 1200)', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_retries',
+        __('Max Retries', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $value = isset($options['rate_limit_retries']) ? esc_attr($options['rate_limit_retries']) : '3';
+            printf(
+                '<input type="number" name="cf_smart_cache_settings[rate_limit_retries]" value="%s" class="small-text" min="1" max="5"> <span class="description">%s</span>',
+                $value,
+                esc_html__('Number of retry attempts on failure (1-5)', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_adaptive',
+        __('Adaptive Limiting', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $checked = ! empty($options['rate_limit_adaptive']) ? 'checked' : '';
+            printf(
+                '<label><input type="checkbox" name="cf_smart_cache_settings[rate_limit_adaptive]" value="1" %s> %s</label>',
+                $checked,
+                esc_html__('Automatically reduce limits when 429 responses are received', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_cf_plan',
+        __('Cloudflare Plan', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $plan = isset($options['rate_limit_cf_plan']) ? $options['rate_limit_cf_plan'] : 'free';
+            $plans = [
+                'free'       => __('Free', 'cf-smart-cache'),
+                'pro'        => __('Pro', 'cf-smart-cache'),
+                'business'   => __('Business', 'cf-smart-cache'),
+                'enterprise' => __('Enterprise', 'cf-smart-cache'),
+            ];
+            echo '<select name="cf_smart_cache_settings[rate_limit_cf_plan]">';
+            foreach ($plans as $key => $label) {
+                printf(
+                    '<option value="%s" %s>%s</option>',
+                    esc_attr($key),
+                    selected($plan, $key, false),
+                    esc_html($label)
+                );
+            }
+            echo '</select>';
+            printf(
+                ' <span class="description">%s</span>',
+                esc_html__('Used to set Purge API token bucket parameters', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_batch_size',
+        __('Purge Batch Size', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $value = isset($options['rate_limit_batch_size']) ? esc_attr($options['rate_limit_batch_size']) : '30';
+            printf(
+                '<input type="number" name="cf_smart_cache_settings[rate_limit_batch_size]" value="%s" class="small-text" min="1" max="100"> <span class="description">%s</span>',
+                $value,
+                esc_html__('URLs per purge API request (max 100)', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
 }
 add_action('admin_init', 'cf_smart_cache_settings_init');
 
@@ -90,6 +186,24 @@ function cf_smart_cache_sanitize_settings($input)
     }
     if (isset($input['cf_smart_cache_zone_id'])) {
         $sanitized['cf_smart_cache_zone_id'] = sanitize_text_field($input['cf_smart_cache_zone_id']);
+    }
+    // Rate limit settings
+    if (isset($input['rate_limit_max'])) {
+        $sanitized['rate_limit_max'] = absint($input['rate_limit_max']);
+    }
+    if (isset($input['rate_limit_retries'])) {
+        $sanitized['rate_limit_retries'] = absint($input['rate_limit_retries']);
+    }
+    if (isset($input['rate_limit_cf_plan'])) {
+        $allowed_plans = ['free', 'pro', 'business', 'enterprise'];
+        $plan = sanitize_text_field($input['rate_limit_cf_plan']);
+        $sanitized['rate_limit_cf_plan'] = in_array($plan, $allowed_plans, true) ? $plan : 'free';
+    }
+    if (isset($input['rate_limit_adaptive'])) {
+        $sanitized['rate_limit_adaptive'] = '1';
+    }
+    if (isset($input['rate_limit_batch_size'])) {
+        $sanitized['rate_limit_batch_size'] = absint($input['rate_limit_batch_size']);
     }
     do_action('cf_smart_cache_after_settings_save', $sanitized, $input);
     return $sanitized;
@@ -116,18 +230,13 @@ function cf_smart_cache_fetch_zones()
         cf_smart_cache_log('No valid API credentials provided', 'error');
         return new WP_Error('missing_creds', 'API token not set. Please provide an API token.');
     }
-    $retry_attempts = 3;
-    $response       = null;
-    for ($i = 0; $i < $retry_attempts; $i++) {
-        $response = wp_remote_get('https://api.cloudflare.com/client/v4/zones', [
-            'headers' => $headers,
-            'timeout' => 15,
-        ]);
-        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) < 500) {
-            break;
-        }
-        cf_smart_cache_log(sprintf('Retrying zone fetch due to transient error (Attempt %d/%d)', $i + 1, $retry_attempts), 'warning');
-        sleep(2);
+    $response = cf_smart_cache_http_request( 'https://api.cloudflare.com/client/v4/zones', [
+        'method'  => 'GET',
+        'headers' => $headers,
+        'timeout' => 15,
+    ], 'zone fetching' );
+    if ( is_wp_error( $response ) ) {
+        return $response;
     }
     $validated_response = cf_smart_cache_validate_api_response($response, 'zone fetching');
     if (is_wp_error($validated_response)) {
@@ -241,6 +350,95 @@ function cf_smart_cache_options_page_html()
         }
         cf_smart_cache_batch_purge([home_url('/')]);
     }
+
+    // Auto-Config handlers
+    $auto_config_message = '';
+    if (isset($_POST['cf_smart_cache_backup'])) {
+        if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-auto-config')) {
+            wp_die(__('Security check failed.', 'cf-smart-cache'));
+        }
+        $count = cf_smart_cache_backup_config();
+        $auto_config_message = sprintf(__('Backup saved (%d of 3 slots).', 'cf-smart-cache'), $count);
+    }
+    if (isset($_POST['cf_smart_cache_apply'])) {
+        if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-auto-config')) {
+            wp_die(__('Security check failed.', 'cf-smart-cache'));
+        }
+        cf_smart_cache_backup_config();
+        $zone_name = cf_smart_cache_get_zone_name();
+        $results = array();
+
+        if ( ! empty( $_POST['apply_page_rule'] ) && $zone_name ) {
+            // Check plan limits before attempting to create.
+            $plan        = cf_smart_cache_get_zone_plan();
+            $plan_limits = cf_smart_cache_get_plan_limits( $plan );
+            $rules       = cf_smart_cache_get_page_rules();
+            $used        = is_wp_error( $rules ) ? 0 : count( $rules );
+            $available   = ( $plan_limits['max_page_rules'] ?? 3 ) - $used;
+            if ( $available < 1 && ! cf_smart_cache_find_our_rule( is_wp_error( $rules ) ? array() : $rules, "*{$zone_name}/*" ) ) {
+                $results['page_rule'] = 'skipped: all ' . $plan_limits['max_page_rules'] . ' Page Rule slots are used';
+            } else {
+                $r = cf_smart_cache_apply_page_rule( $zone_name );
+                if ( is_wp_error( $r ) ) {
+                    $msg = $r->get_error_message();
+                    if ( false !== stripos( $msg, 'unauthorized' ) || false !== stripos( $msg, 'forbidden' ) ) {
+                        $msg .= ' — Please add "Page Rules: Edit" permission to your API Token in Cloudflare Dashboard.';
+                    }
+                    $results['page_rule'] = 'error: ' . $msg;
+                } else {
+                    $results['page_rule'] = 'ok';
+                }
+            }
+        }
+        if ( ! empty( $_POST['apply_dns_proxy'] ) ) {
+            $strategy = $_POST['dns_proxy_strategy'] ?? 'root';
+            $records  = cf_smart_cache_get_dns_records( $zone_name );
+            if ( ! is_wp_error( $records ) ) {
+                if ( 'root' === $strategy ) {
+                    $zone_norm = rtrim( $zone_name, '.' );
+                    $records = array_filter( $records, function ( $r ) use ( $zone_norm ) {
+                        $name = rtrim( $r['name'], '.' );
+                        return $name === $zone_norm || $name === '@';
+                    } );
+                }
+                if ( empty( $records ) ) {
+                    $results['dns_proxy'] = 'no matching records found (all may already be proxied)';
+                } else {
+                    $r = cf_smart_cache_apply_dns_proxy( $records );
+                    if ( is_wp_error( $r ) ) {
+                        $results['dns_proxy'] = 'error: ' . $r->get_error_message();
+                    } else {
+                        $parts = array();
+                        if ( $r['updated'] > 0 ) {
+                            $parts[] = $r['updated'] . ' updated';
+                        }
+                        if ( $r['skipped'] > 0 ) {
+                            $parts[] = $r['skipped'] . ' already proxied';
+                        }
+                        if ( $r['errors'] > 0 ) {
+                            $parts[] = $r['errors'] . ' errors';
+                        }
+                        $results['dns_proxy'] = empty( $parts ) ? 'no changes needed' : implode( ', ', $parts );
+                    }
+                }
+            } else {
+                $results['dns_proxy'] = 'error: ' . $records->get_error_message();
+            }
+        }
+
+        $auto_config_message = 'Apply results: ' . wp_json_encode( $results );
+    }
+    if (isset($_POST['cf_smart_cache_rollback'])) {
+        if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-auto-config')) {
+            wp_die(__('Security check failed.', 'cf-smart-cache'));
+        }
+        $index = isset( $_POST['rollback_index'] ) ? (int) $_POST['rollback_index'] : -1;
+        if ( $index >= 0 ) {
+            cf_smart_cache_backup_config();
+            $r = cf_smart_cache_restore_backup( $index );
+            $auto_config_message = 'Rollback results: ' . wp_json_encode( $r );
+        }
+    }
     ?>
     <div class="wrap">
         <h1><?php echo esc_html(get_admin_page_title()); ?></h1>
@@ -269,6 +467,8 @@ function cf_smart_cache_options_page_html()
         <hr>
         <h2><?php esc_html_e('Cache Status', 'cf-smart-cache'); ?></h2>
         <?php cf_smart_cache_display_cache_status(); ?>
+        <hr>
+        <?php cf_smart_cache_display_auto_config( $auto_config_message ); ?>
     </div>
     <?php
 }
@@ -295,20 +495,23 @@ function cf_smart_cache_purge_all_cache()
         return;
     }
     $api_url = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
-    cf_smart_cache_check_rate_limit();
-    $response           = wp_remote_post($api_url, [
+    $response = cf_smart_cache_http_request( $api_url, [
         'method'  => 'POST',
         'headers' => $headers,
         'body'    => json_encode(['purge_everything' => true]),
-        'timeout' => 15
-    ]);
-    $validated_response = cf_smart_cache_validate_api_response($response, 'purge all cache');
-    if (is_wp_error($validated_response)) {
-        $message = 'Error: ' . $validated_response->get_error_message();
+        'timeout' => 15,
+    ], 'purge all cache' );
+    if ( is_wp_error( $response ) ) {
+        $message = 'Error: ' . $response->get_error_message();
     } else {
-        $message = 'Success: All cache purged from Cloudflare.';
-        cf_smart_cache_log('Manual purge all cache executed');
-        do_action('cf_smart_cache_after_purge_all', $validated_response);
+        $validated_response = cf_smart_cache_validate_api_response($response, 'purge all cache');
+        if ( is_wp_error( $validated_response ) ) {
+            $message = 'Error: ' . $validated_response->get_error_message();
+        } else {
+            $message = 'Success: All cache purged from Cloudflare.';
+            cf_smart_cache_log('Manual purge all cache executed');
+            do_action('cf_smart_cache_after_purge_all', $validated_response);
+        }
     }
     set_transient('cf_smart_cache_notice_' . get_current_user_id(), $message, 45);
 }
@@ -318,30 +521,141 @@ function cf_smart_cache_purge_all_cache()
  */
 function cf_smart_cache_display_cache_status()
 {
-    $settings = get_option('cf_smart_cache_settings', []);
-    $zone_id  = isset($settings['cf_smart_cache_zone_id']) ? $settings['cf_smart_cache_zone_id'] : '';
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    $stats      = cf_smart_cache_get_cache_stats();
+    $urls       = cf_smart_cache_get_cached_urls( 10 );
+    $reasons    = cf_smart_cache_get_bypass_reasons();
+    $settings   = get_option( 'cf_smart_cache_settings', array() );
+    $api_token  = $settings['cf_smart_cache_api_token'] ?? '';
+    $zone_id    = $settings['cf_smart_cache_zone_id'] ?? '';
+    $hit_color  = $stats['hit_rate'] >= 70 ? '#46b450' : ( $stats['hit_rate'] >= 40 ? '#ffb900' : '#dc3232' );
+
     echo '<div class="cf-cache-status">';
-    if (empty($zone_id)) {
+
+    // Configuration status
+    echo '<table class="widefat striped" style="max-width:720px;"><tbody>';
+    printf(
+        '<tr><th style="width:240px;">%1$s</th><td>%2$s</td></tr>',
+        esc_html__( 'API Token', 'cf-smart-cache' ),
+        ! empty( $api_token ) ? '<span style="color:#46b450;">&#10004; ' . esc_html__( 'Configured', 'cf-smart-cache' ) . '</span>' : '<span style="color:#dc3232;">&#10006; ' . esc_html__( 'Missing', 'cf-smart-cache' ) . '</span>'
+    );
+    printf(
+        '<tr><th>%1$s</th><td>%2$s</td></tr>',
+        esc_html__( 'Zone ID', 'cf-smart-cache' ),
+        ! empty( $zone_id ) ? '<span style="color:#46b450;">&#10004; ' . esc_html__( 'Configured', 'cf-smart-cache' ) . '</span>' : '<span style="color:#dc3232;">&#10006; ' . esc_html__( 'Missing', 'cf-smart-cache' ) . '</span>'
+    );
+    echo '</tbody></table>';
+
+    // Performance metrics
+    echo '<h3>' . esc_html__( 'Cache Performance (last hour)', 'cf-smart-cache' ) . '</h3>';
+    echo '<table class="widefat striped" style="max-width:720px;"><tbody>';
+    printf(
+        '<tr><th style="width:240px;">%1$s</th><td><strong>%2$d</strong></td></tr>',
+        esc_html__( 'Cache Hits', 'cf-smart-cache' ),
+        (int) $stats['hits']
+    );
+    printf(
+        '<tr><th>%1$s</th><td><strong>%2$d</strong></td></tr>',
+        esc_html__( 'Cache Misses', 'cf-smart-cache' ),
+        (int) $stats['misses']
+    );
+    printf(
+        '<tr><th>%1$s</th><td><strong style="color:%2$s;">%3$s%%</strong> (%4$d %5$s)</td></tr>',
+        esc_html__( 'Hit Rate', 'cf-smart-cache' ),
+        esc_attr( $hit_color ),
+        esc_html( $stats['hit_rate'] ),
+        (int) $stats['total'],
+        esc_html__( 'requests', 'cf-smart-cache' )
+    );
+    printf(
+        '<tr><th>%1$s</th><td><strong>%2$d</strong> / 1000</td></tr>',
+        esc_html__( 'Cached URLs Tracked', 'cf-smart-cache' ),
+        (int) $stats['cached_urls_count']
+    );
+    if ( ! empty( $stats['last_bypass_reason'] ) ) {
         printf(
-            '<p><span class="dashicons dashicons-warning" style="color: #f56e28;"></span> %s</p>',
-            esc_html__('Please configure your Cloudflare API credentials and select a zone.', 'cf-smart-cache')
-        );
-    } else {
-        printf(
-            '<p><span class="dashicons dashicons-yes-alt" style="color: #00a32a;"></span> %s <code>%s</code></p>',
-            esc_html__('Cloudflare Smart Cache is active for zone:', 'cf-smart-cache'),
-            esc_html($zone_id)
-        );
-        $rate_limit_key = 'cf_smart_cache_rate_limit';
-        $requests_count = get_transient($rate_limit_key) ?: 0;
-        printf(
-            '<p>%s %d/1000</p>',
-            esc_html__('API requests in last 5 minutes:', 'cf-smart-cache'),
-            absint($requests_count)
+            '<tr><th>%1$s</th><td><code>%2$s</code></td></tr>',
+            esc_html__( 'Last Bypass Reason', 'cf-smart-cache' ),
+            esc_html( $stats['last_bypass_reason'] )
         );
     }
+    echo '</tbody></table>';
+
+    // Bypass reasons breakdown
+    if ( ! empty( $reasons ) ) {
+        echo '<h3>' . esc_html__( 'Bypass Reasons', 'cf-smart-cache' ) . '</h3>';
+        echo '<table class="widefat striped" style="max-width:720px;"><thead><tr><th>' . esc_html__( 'Reason', 'cf-smart-cache' ) . '</th><th>' . esc_html__( 'Count', 'cf-smart-cache' ) . '</th></tr></thead><tbody>';
+        foreach ( $reasons as $reason => $count ) {
+            printf(
+                '<tr><td><code>%1$s</code></td><td>%2$d</td></tr>',
+                esc_html( $reason ),
+                (int) $count
+            );
+        }
+        echo '</tbody></table>';
+    } else {
+        echo '<p>' . esc_html__( 'No bypass events recorded yet.', 'cf-smart-cache' ) . '</p>';
+    }
+
+    // Rate limit status
+    $rate_state = get_transient( 'cf_smart_cache_rate_state' );
+    if ( is_array( $rate_state ) ) {
+        echo '<h3>' . esc_html__( 'Rate Limit Status', 'cf-smart-cache' ) . '</h3>';
+        $state_colors = array(
+            'normal'   => '#46b450',
+            'warning'  => '#ffb900',
+            'critical' => '#dc3232',
+            'backoff'  => '#d63638',
+        );
+        $state_color = isset( $state_colors[ $rate_state['state'] ] ) ? $state_colors[ $rate_state['state'] ] : '#666';
+        echo '<table class="widefat striped" style="max-width:720px;"><tbody>';
+        printf(
+            '<tr><th style="width:240px;">%s</th><td><span style="color:%s;font-weight:bold;">%s</span></td></tr>',
+            esc_html__( 'State', 'cf-smart-cache' ),
+            esc_attr( $state_color ),
+            esc_html( strtoupper( $rate_state['state'] ) )
+        );
+        printf(
+            '<tr><th>%s</th><td>%d / %s</td></tr>',
+            esc_html__( 'Window Usage', 'cf-smart-cache' ),
+            count( $rate_state['window_log'] ),
+            esc_html( sprintf( __( '%d (5 min sliding)', 'cf-smart-cache' ), $rate_state['adapted_limit'] ) )
+        );
+        printf(
+            '<tr><th>%s</th><td>%d</td></tr>',
+            esc_html__( 'Consecutive 429s', 'cf-smart-cache' ),
+            (int) $rate_state['consecutive_429']
+        );
+        $queue = get_transient( 'cf_smart_cache_purge_queue' );
+        printf(
+            '<tr><th>%s</th><td>%d</td></tr>',
+            esc_html__( 'Queue Pending', 'cf-smart-cache' ),
+            is_array( $queue ) ? count( $queue ) : 0
+        );
+        echo '</tbody></table>';
+    }
+
+    // Recent cached URLs
+    if ( ! empty( $urls ) ) {
+        echo '<h3>' . esc_html__( 'Recent Cached URLs', 'cf-smart-cache' ) . '</h3>';
+        echo '<table class="widefat striped" style="max-width:720px;"><thead><tr><th>' . esc_html__( 'URL', 'cf-smart-cache' ) . '</th><th>' . esc_html__( 'Time', 'cf-smart-cache' ) . '</th></tr></thead><tbody>';
+        foreach ( $urls as $entry ) {
+            printf(
+                '<tr><td><code style="word-break:break-all;">%1$s</code></td><td>%2$s</td></tr>',
+                esc_html( $entry['url'] ),
+                esc_html( date_i18n( 'Y-m-d H:i:s', $entry['timestamp'] ) )
+            );
+        }
+        echo '</tbody></table>';
+    } else {
+        echo '<p>' . esc_html__( 'No cached URLs recorded yet.', 'cf-smart-cache' ) . '</p>';
+    }
+
     echo '</div>';
 }
+
 
 /**
  * Admin toolbar integration
@@ -452,3 +766,148 @@ add_action('admin_notices', function ()
         echo '<div class="notice notice-error"><p><strong>Cloudflare Smart Cache:</strong> ' . esc_html__('Cloudflare Zone ID is missing. Please select a zone in the plugin settings.', 'cf-smart-cache') . '</p></div>';
     }
 });
+
+/**
+ * Render the Auto-Configuration section in the admin settings page.
+ */
+function cf_smart_cache_display_auto_config( $message = '' ) {
+    if ( ! current_user_can( 'manage_options' ) ) {
+        return;
+    }
+    $status = cf_smart_cache_get_config_status();
+    ?>
+    <h2><?php esc_html_e( 'Cloudflare Auto-Configuration', 'cf-smart-cache' ); ?></h2>
+    <p class="description"><?php esc_html_e( 'Automatically configure Cloudflare settings for optimal cache performance.', 'cf-smart-cache' ); ?></p>
+
+    <?php if ( $message ) : ?>
+        <div class="notice notice-info is-dismissible"><p><strong>CF Smart Cache:</strong> <?php echo esc_html( $message ); ?></p></div>
+    <?php endif; ?>
+
+    <?php if ( ! $status['api_token_set'] || ! $status['zone_id_set'] ) : ?>
+        <div class="notice notice-warning"><p><?php esc_html_e( 'Please configure your API Token and Zone ID first.', 'cf-smart-cache' ); ?></p></div>
+        <?php return; ?>
+    <?php endif; ?>
+
+    <div style="max-width:720px;">
+
+    <!-- Status table -->
+    <table class="widefat striped">
+        <tbody>
+        <tr><th style="width:200px;"><?php esc_html_e( 'Zone', 'cf-smart-cache' ); ?></th>
+            <td><strong><?php echo esc_html( $status['zone_name'] ?: $status['site_domain'] ); ?></strong>
+                (<?php echo esc_html( strtoupper( $status['plan'] ) ); ?>)
+                <?php if ( isset( $status['page_rule_available'] ) && null !== $status['page_rule_available'] ) : ?>
+                    &mdash; <?php echo esc_html( sprintf( __( 'Page Rules: %d/%d used', 'cf-smart-cache' ), $status['page_rules_used'], $status['plan_limits']['max_page_rules'] ?? '?' ) ); ?>
+                <?php endif; ?>
+            </td></tr>
+        <tr><th><?php esc_html_e( 'Page Rule', 'cf-smart-cache' ); ?></th>
+            <td><?php echo cf_smart_cache_config_status_badge( $status['page_rule']['status'] ); ?>
+                <?php echo esc_html( $status['page_rule']['pattern'] ?? '' ); ?></td></tr>
+        <tr><th><?php esc_html_e( 'Origin Cache Control', 'cf-smart-cache' ); ?></th>
+            <td><?php echo cf_smart_cache_config_status_badge( $status['explicit_cc']['status'] ); ?>
+                <?php echo esc_html( $status['explicit_cc']['current'] ? sprintf( 'current: %s', $status['explicit_cc']['current'] ) : '' ); ?></td></tr>
+        <tr><th><?php esc_html_e( 'DNS Proxy', 'cf-smart-cache' ); ?></th>
+            <td>
+                <?php
+                $unproxied = $status['dns_unproxied'] ?? array();
+                if ( count( $unproxied ) > 0 ) {
+                    echo cf_smart_cache_config_status_badge( 'missing' );
+                    foreach ( $unproxied as $r ) {
+                        echo '<code>' . esc_html( "{$r['name']} ({$r['type']})" ) . '</code> ';
+                    }
+                } else {
+                    echo cf_smart_cache_config_status_badge( 'ok' );
+                }
+                ?>
+            </td></tr>
+        <tr><th><?php esc_html_e( 'Backup', 'cf-smart-cache' ); ?></th>
+            <td>
+                <?php if ( $status['backup_count'] > 0 ) : ?>
+                    <?php echo esc_html( sprintf( '%d backup(s)', $status['backup_count'] ) ); ?>
+                    &mdash; <?php echo esc_html( $status['last_backup_time'] ? date_i18n( 'Y-m-d H:i', $status['last_backup_time'] ) : '' ); ?>
+                <?php else : ?>
+                    <?php esc_html_e( 'No backup yet', 'cf-smart-cache' ); ?>
+                <?php endif; ?>
+            </td></tr>
+        </tbody>
+    </table>
+
+    <form method="post" style="margin-top:15px;">
+        <?php wp_nonce_field( 'cf-smart-cache-auto-config' ); ?>
+
+        <h3><?php esc_html_e( 'Apply Configuration', 'cf-smart-cache' ); ?></h3>
+
+        <p>
+            <label>
+                <input type="checkbox" name="apply_page_rule" value="1" checked>
+                <?php esc_html_e( 'Set Page Rule (Cache Everything)', 'cf-smart-cache' ); ?>
+            </label>
+            <code><?php echo esc_html( $status['page_rule']['pattern'] ?? '*domain.com/*' ); ?></code>
+        </p>
+
+        <p style="color:#666;">
+            <label>
+                <input type="checkbox" checked disabled>
+                <?php esc_html_e( 'Enable Origin Cache Control', 'cf-smart-cache' ); ?>
+            </label>
+            <span class="description"><?php esc_html_e( '(included in Page Rule — always applied)', 'cf-smart-cache' ); ?></span>
+        </p>
+
+        <p>
+            <label>
+                <input type="checkbox" name="apply_dns_proxy" value="1" checked>
+                <?php esc_html_e( 'Enable DNS Proxy (Orange Cloud)', 'cf-smart-cache' ); ?>
+            </label>
+            <select name="dns_proxy_strategy">
+                <option value="root"><?php esc_html_e( 'Root domain only', 'cf-smart-cache' ); ?></option>
+                <option value="all"><?php esc_html_e( 'All proxiable records', 'cf-smart-cache' ); ?></option>
+            </select>
+        </p>
+
+        <p>
+            <input type="submit" name="cf_smart_cache_backup" class="button button-secondary"
+                   value="<?php esc_attr_e( 'Backup Now', 'cf-smart-cache' ); ?>">
+            <input type="submit" name="cf_smart_cache_apply" class="button button-primary"
+                   value="<?php esc_attr_e( 'Apply Selected', 'cf-smart-cache' ); ?>">
+            <?php if ( $status['backup_count'] > 0 ) : ?>
+                <select name="rollback_index">
+                    <?php
+                    $backups = cf_smart_cache_get_backups();
+                    foreach ( array_reverse( $backups, true ) as $i => $b ) {
+                        printf(
+                            '<option value="%d">%s</option>',
+                            esc_attr( $i ),
+                            esc_html( date_i18n( 'Y-m-d H:i', $b['timestamp'] ) )
+                        );
+                    }
+                    ?>
+                </select>
+                <input type="submit" name="cf_smart_cache_rollback" class="button button-secondary"
+                       value="<?php esc_attr_e( 'Rollback', 'cf-smart-cache' ); ?>"
+                       onclick="return confirm('<?php echo esc_js( __( 'Current config will be backed up before restoring the selected version. Continue?', 'cf-smart-cache' ) ); ?>');">
+            <?php endif; ?>
+        </p>
+    </form>
+
+    </div>
+    <?php
+}
+
+/**
+ * Render a status badge for auto-config checks.
+ */
+function cf_smart_cache_config_status_badge( $status ) {
+    switch ( $status ) {
+        case 'ok':
+            return '<span style="color:#46b450;font-weight:bold;">&#10004; ' . esc_html__( 'OK', 'cf-smart-cache' ) . '</span>';
+        case 'missing':
+            return '<span style="color:#ffb900;font-weight:bold;">&#9888; ' . esc_html__( 'Not set', 'cf-smart-cache' ) . '</span>';
+        case 'wrong':
+            return '<span style="color:#dc3232;font-weight:bold;">&#10006; ' . esc_html__( 'Incorrect', 'cf-smart-cache' ) . '</span>';
+        case 'error':
+            return '<span style="color:#dc3232;">&#10006; ' . esc_html__( 'Error', 'cf-smart-cache' ) . '</span>';
+        default:
+            return '<span style="color:#999;">&#9899; ' . esc_html__( 'Unknown', 'cf-smart-cache' ) . '</span>';
+    }
+}
+
