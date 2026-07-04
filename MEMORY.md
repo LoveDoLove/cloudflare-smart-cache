@@ -8,7 +8,7 @@
 Cloudflare Smart Cache 是一個專為 WordPress 打造的 Cloudflare 邊緣緩存解決方案，提供 HTML 邊緣緩存、自動清除緩存、高級管理控制等功能。
 
 ## Current Project Status
-- **Version:** 2.2.0 (plugin: cf-smart-cache/cf-smart-cache.php)
+- **Version:** 2.3.0 (plugin: cf-smart-cache/cf-smart-cache.php)
 - **Testing:** Tested up to WordPress 6.4
 - **Min Requirements:** WordPress 5.0, PHP 7.4
 - **License:** MIT
@@ -221,7 +221,9 @@ cloudflare-smart-cache/
 
 ### Core (`cf-smart-cache/includes/core.php`)
 - Logging: `cf_smart_cache_log`, `cf_smart_cache_enhanced_log`
-- API: `cf_smart_cache_validate_api_response`, `cf_smart_cache_check_rate_limit`, `cf_smart_cache_batch_purge`, `cf_smart_cache_execute_purge`
+- API: `cf_smart_cache_validate_api_response`, `cf_smart_cache_http_request` (v2.3.0), `cf_smart_cache_check_rate_limit` (deprecated wrapper), `cf_smart_cache_batch_purge`, `cf_smart_cache_execute_purge`
+- Rate Limiting (v2.3.0): `cf_smart_cache_rate_governor`, `cf_smart_cache_purge_bucket`, `cf_smart_cache_backoff_delay`, `cf_smart_cache_handle_429_response`
+- Purge Queue (v2.3.0): `cf_smart_cache_enqueue_purge`, `cf_smart_cache_flush_purge_queue`
 - Headers / Cache logic: `cf_smart_cache_init_action`, `cf_smart_cache_set_edge_headers`, `cf_smart_cache_add_security_headers`, `cf_smart_cache_rest_api_headers`
 - Cache Statistics (v2.2.0): `cf_smart_cache_stats_keys`, `cf_smart_cache_increment_hit`, `cf_smart_cache_increment_miss`, `cf_smart_cache_record_cache_url`, `cf_smart_cache_record_bypass_reason`, `cf_smart_cache_get_cache_stats`, `cf_smart_cache_get_cached_urls`, `cf_smart_cache_get_bypass_reasons`
 - Purge triggers: `cf_smart_cache_purge`, `cf_smart_cache_purge0`, `cf_smart_cache_purge1`, `cf_smart_cache_purge2`, `cf_smart_cache_post_transition`

@@ -17,22 +17,9 @@
   - 測試緩存邏輯
   - 測試 Purge API 整合
 - **預期輸出**：
-  - 	ests/ 目錄結構
+  - tests/ 目錄結構
   - 至少 10 個單元測試案例
   - CI/CD 整合
-
----
-
-#### [轉換] 優化 Cloudflare API 請求速率限制
-- **狀態**：待決
-- **優先級**：中
-- **說明**：
-  - 優化現有的 rate limiting 機制
-  - 更精確的請求計數
-  - 動態調整 timeout
-- **預期輸出**：
-  - 改進的 rate limiting 算法
-  - 更好的錯誤訊息
 
 ---
 
@@ -57,6 +44,30 @@
 
 ---
 
+## [完成 - Completed]
+
+### [2026-07-05] 優化 Cloudflare API 請求速率限制（v2.3.0）
+- **狀態**：已完成
+- **優先級**：高
+- **完成內容**：
+  - 滑動時窗 Governor：`cf_smart_cache_rate_governor()` — 5 分鐘滑動時窗、狀態機（normal/warning/critical/backoff）、自動調適限流（遇 429 降 10%，下限 600，1h 無 429 恢復 50）
+  - Token Bucket：`cf_smart_cache_purge_bucket()` — 依 Cloudflare 方案（Free/Pro/Business/Enterprise）選擇參數，支援 burst
+  - 智慧退避：`cf_smart_cache_backoff_delay()` — exponential 級數 [1,2,4,8,15] + ±20% jitter + retry-after header 感知
+  - 429 Handler：`cf_smart_cache_handle_429_response()` — 調降 adapted_limit、追蹤連續 429、排程 backoff
+  - HTTP Executor：`cf_smart_cache_http_request()` — 封裝所有 wp_remote_* 呼叫，3 次重試（可配置 1-5），讀 retry-after header
+  - Debounced Queue：`cf_smart_cache_enqueue_purge()` + `cf_smart_cache_flush_purge_queue()` — 2 秒合併視窗、滿 100 強制 flush
+  - 修改所有 Caller：batch_purge / execute_purge / purge_all_cache / fetch_zones 改用 http_request
+  - Hook 端：on_status_change / on_delete_post / on_term_change 改用 enqueue_purge
+  - Admin UI：Rate Limit 狀態區塊（State、Window Usage、429s、Queue）、5 個設定欄位（max/retries/adaptive/plan/batch_size）
+  - 向後相容：保留 `cf_smart_cache_check_rate_limit()` wrapper
+  - 版本提升至 2.3.0，更新 AGENTS.md changelog
+- **影響文件**：
+  - cf-smart-cache/includes/core.php（+290 行新函數、修改 6 個既有函數）
+  - cf-smart-cache/admin/admin.php（+120 行：設定欄位 + 儀表板區塊）
+  - cf-smart-cache/cf-smart-cache.php（版本號 + 清理新 transient）
+- **驗證**：php -l 三檔皆無語法錯誤
+
+---
 
 ### [2026-06-28] 修復 Fatal Error 並補完 Cache Statistics 功能
 - **完成內容**：
@@ -69,7 +80,8 @@
   - cf-smart-cache/admin/admin.php（補上 display_cache_status 實作，約 75 行）
 - **驗證**：php -l 兩檔皆無語法錯誤
 - **待辦**：下次實際在 WordPress 後台驗證頁面渲染、計數遞增、bypass reason 觸發
-## [完成 - Completed]
+
+---
 
 ### [2026-06-27] 初始化 MEMORY.md 和 AGENTS.md
 - **完成內容**：
@@ -122,5 +134,5 @@
 
 ---
 
-**最後更新**：2026-06-28
-**下次檢查**：2026-06-29
+**最後更新**：2026-07-05
+**下次檢查**：2026-07-06

@@ -400,35 +400,256 @@ function cf_smart_cache_post_transition($new_status, $old_status, $post)
 }
 
 // Rate limiting and batch processing
+
+/**
+ * Sliding-window rate limit governor.
+ *
+ * @param string $mode 'check' | 'consume'
+ * @return string 'allowed' | 'denied' | 'backoff' | 'warning'
+ */
+function cf_smart_cache_rate_governor( $mode = 'check' ) {
+    $key   = 'cf_smart_cache_rate_state';
+    $state = get_transient( $key );
+    if ( ! is_array( $state ) ) {
+        $state = array(
+            'state'            => 'normal',
+            'window_log'       => array(),
+            'adapted_limit'    => 1200,
+            'backoff_until'    => 0,
+            'consecutive_429'  => 0,
+            'last_429_time'    => 0,
+            'total_429_count'  => 0,
+            'last_request_time' => 0,
+        );
+    }
+
+    $now  = time();
+    $cut  = $now - 300;
+
+    // Prune entries outside the 5-minute sliding window.
+    $pruned = array();
+    foreach ( $state['window_log'] as $ts ) {
+        if ( $ts > $cut ) {
+            $pruned[] = $ts;
+        }
+    }
+    $state['window_log'] = $pruned;
+    $window_count = count( $pruned );
+    $effective    = $state['adapted_limit'];
+
+    // Gradual recovery: +50 / hour if no 429.
+    if ( $state['consecutive_429'] > 0 && $state['last_429_time'] > 0 && $state['last_429_time'] < $now - 3600 ) {
+        $state['adapted_limit']    = min( 1200, $state['adapted_limit'] + 50 );
+        $state['consecutive_429']  = 0;
+    }
+
+    // Absolute denial.
+    if ( $window_count >= $effective ) {
+        $state['state'] = 'critical';
+        set_transient( $key, $state, 3600 );
+        return 'denied';
+    }
+
+    // Backoff check.
+    if ( $state['backoff_until'] > $now ) {
+        return 'backoff';
+    }
+
+    if ( $mode === 'consume' ) {
+        $state['window_log'][] = $now;
+        $state['last_request_time'] = $now;
+    }
+
+    $ratio = $window_count / $effective;
+    $state['state'] = $ratio >= 0.95 ? 'critical' : ( $ratio >= 0.80 ? 'warning' : 'normal' );
+    set_transient( $key, $state, 3600 );
+
+    if ( $mode === 'consume' ) {
+        return 'allowed';
+    }
+    return $ratio >= 0.80 ? 'warning' : 'allowed';
+}
+
+/**
+ * Token-bucket rate limiter for the Purge API.
+ * Bucket parameters vary by Cloudflare plan (Free/Pro/Business/Enterprise).
+ */
+function cf_smart_cache_purge_bucket( $mode = 'check' ) {
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $plan     = isset( $settings['rate_limit_cf_plan'] ) ? $settings['rate_limit_cf_plan'] : 'free';
+
+    $params = array(
+        'free'       => array( 'rate' => 5 / 60, 'burst' => 25, 'max_per_request' => 100 ),
+        'pro'        => array( 'rate' => 5,       'burst' => 25, 'max_per_request' => 100 ),
+        'business'   => array( 'rate' => 10,      'burst' => 50, 'max_per_request' => 100 ),
+        'enterprise' => array( 'rate' => 50,      'burst' => 500, 'max_per_request' => 500 ),
+    );
+    if ( ! isset( $params[ $plan ] ) ) {
+        $plan = 'free';
+    }
+    $p = $params[ $plan ];
+
+    $key    = 'cf_smart_cache_purge_bucket';
+    $bucket = get_transient( $key );
+    if ( ! is_array( $bucket ) ) {
+        $bucket = array(
+            'tokens'      => (float) $p['burst'],
+            'max_burst'   => $p['burst'],
+            'last_refill' => time(),
+        );
+    }
+
+    $now          = time();
+    $elapsed      = $now - $bucket['last_refill'];
+    $bucket['tokens'] = min( $bucket['max_burst'], $bucket['tokens'] + ( $elapsed * $p['rate'] ) );
+    $bucket['last_refill'] = $now;
+
+    if ( $mode === 'consume' ) {
+        if ( $bucket['tokens'] >= 1.0 ) {
+            $bucket['tokens']--;
+            set_transient( $key, $bucket, 3600 );
+            return 'allowed';
+        }
+        set_transient( $key, $bucket, 3600 );
+        return 'denied';
+    }
+
+    set_transient( $key, $bucket, 3600 );
+    return $bucket['tokens'] >= 1.0 ? 'allowed' : 'denied';
+}
+
+/**
+ * Exponential back-off with ±20 % jitter.
+ *
+ * @param int   $attempt     Zero-based retry counter.
+ * @param int   $retry_after Server-provided Retry-After header value (seconds).
+ * @return int  Delay in seconds.
+ */
+function cf_smart_cache_backoff_delay( $attempt, $retry_after = 0 ) {
+    if ( $retry_after > 0 ) {
+        return $retry_after + rand( 0, 2 );
+    }
+    $base  = array( 1, 2, 4, 8, 15 );
+    $delay = isset( $base[ $attempt ] ) ? $base[ $attempt ] : 15;
+    $jitter = $delay * ( 0.8 + ( rand( 0, 40 ) / 100 ) );
+    return (int) ceil( $jitter );
+}
+
+/**
+ * Handle a 429 response: reduce adapted limit, schedule backoff.
+ */
+function cf_smart_cache_handle_429_response() {
+    $key   = 'cf_smart_cache_rate_state';
+    $state = get_transient( $key );
+    if ( ! is_array( $state ) ) {
+        return;
+    }
+    $state['adapted_limit']   = max( 600, (int) ( $state['adapted_limit'] * 0.9 ) );
+    $state['consecutive_429']++;
+    $state['last_429_time']   = time();
+    $state['state']           = 'backoff';
+    $state['backoff_until']   = time() + cf_smart_cache_backoff_delay( $state['consecutive_429'] - 1 );
+    set_transient( $key, $state, 3600 );
+}
+
+/**
+ * HTTP request wrapper with retry, backoff, and rate-limit awareness.
+ *
+ * Supports GET / POST / PUT / DELETE via $args['method'] (default POST).
+ * Retries on 429, 5xx, and network errors with exponential back-off.
+ */
+function cf_smart_cache_http_request( $url, $args = array(), $operation = '' ) {
+    $settings = get_option( 'cf_smart_cache_settings', array() );
+    $max_retries = isset( $settings['rate_limit_retries'] ) ? (int) $settings['rate_limit_retries'] : 3;
+    $max_retries = max( 1, min( 5, $max_retries ) );
+
+    if ( ! isset( $args['method'] ) ) {
+        $args['method'] = 'POST';
+    }
+
+    for ( $attempt = 0; $attempt < $max_retries; $attempt++ ) {
+        // Consult global sliding-window governor.
+        $governed = cf_smart_cache_rate_governor( 'consume' );
+        if ( $governed === 'denied' || $governed === 'backoff' ) {
+            $state = get_transient( 'cf_smart_cache_rate_state' );
+            $wait  = max( 0, ( isset( $state['backoff_until'] ) ? $state['backoff_until'] : 0 ) - time() );
+            sleep( min( $wait ?: cf_smart_cache_backoff_delay( $attempt ), 60 ) );
+            continue;
+        }
+
+        $response = wp_remote_request( $url, $args );
+
+        if ( is_wp_error( $response ) ) {
+            sleep( cf_smart_cache_backoff_delay( $attempt ) );
+            continue;
+        }
+
+        $code = wp_remote_retrieve_response_code( $response );
+
+        if ( $code === 429 ) {
+            cf_smart_cache_handle_429_response();
+            $retry_after = (int) wp_remote_retrieve_header( $response, 'retry-after' );
+            sleep( cf_smart_cache_backoff_delay( $attempt, $retry_after ) );
+            continue;
+        }
+
+        if ( $code >= 500 && $code < 600 ) {
+            sleep( cf_smart_cache_backoff_delay( $attempt ) );
+            continue;
+        }
+
+        return $response;
+    }
+
+    return new WP_Error( 'max_retries', sprintf( 'Failed after %d retries: %s', $max_retries, $operation ) );
+}
+
+// Backward-compatible wrapper.
 function cf_smart_cache_check_rate_limit()
 {
-    $rate_limit_key  = 'cf_smart_cache_rate_limit';
-    $rate_limit_data = get_transient($rate_limit_key);
-    if (!$rate_limit_data) {
-        $rate_limit_data = [
-            'requests'     => 0,
-            'reset_time'   => time() + 300,
-            'window_start' => time()
-        ];
-    }
-    $current_time = time();
-    if ($current_time >= $rate_limit_data['reset_time']) {
-        $rate_limit_data = [
-            'requests'     => 0,
-            'reset_time'   => $current_time + 300,
-            'window_start' => $current_time
-        ];
-    }
-    if ($rate_limit_data['requests'] >= 1000) {
-        $wait_time = $rate_limit_data['reset_time'] - $current_time;
-        cf_smart_cache_log(sprintf('Rate limit approaching (%d/1200), waiting %d seconds', $rate_limit_data['requests'], $wait_time), 'warning');
-        return false;
-    }
-    $rate_limit_data['requests']++;
-    set_transient($rate_limit_key, $rate_limit_data, 300);
-    cf_smart_cache_log(sprintf('API request %d/1200 in current window', $rate_limit_data['requests']), 'debug');
-    return true;
+    return 'allowed' === cf_smart_cache_rate_governor( 'consume' );
 }
+
+/**
+ * Enqueue URLs for batched cache purging (debounced).
+ *
+ * Accumulates URLs over a 2-second window; flushes when the queue reaches 100 entries.
+ */
+function cf_smart_cache_enqueue_purge( $urls ) {
+    if ( empty( $urls ) ) {
+        return;
+    }
+    $queue = get_transient( 'cf_smart_cache_purge_queue' );
+    if ( ! is_array( $queue ) ) {
+        $queue = array();
+    }
+    $queue = array_merge( $queue, $urls );
+    $queue = array_values( array_unique( $queue ) );
+
+    if ( count( $queue ) >= 100 ) {
+        cf_smart_cache_flush_purge_queue();
+        return;
+    }
+
+    set_transient( 'cf_smart_cache_purge_queue', $queue, 30 );
+    if ( ! wp_next_scheduled( 'cf_smart_cache_flush_queue_event' ) ) {
+        wp_schedule_single_event( time() + 2, 'cf_smart_cache_flush_queue_event' );
+    }
+}
+
+/**
+ * Flush the pending purge queue.
+ */
+function cf_smart_cache_flush_purge_queue() {
+    $queue = get_transient( 'cf_smart_cache_purge_queue' );
+    if ( ! is_array( $queue ) || empty( $queue ) ) {
+        return;
+    }
+    delete_transient( 'cf_smart_cache_purge_queue' );
+    cf_smart_cache_log( sprintf( 'Flushing purge queue: %d URLs', count( $queue ) ) );
+    cf_smart_cache_batch_purge( $queue );
+}
+add_action( 'cf_smart_cache_flush_queue_event', 'cf_smart_cache_flush_purge_queue' );
 function cf_smart_cache_batch_purge($urls_to_purge)
 {
     $settings  = get_option('cf_smart_cache_settings');
@@ -437,27 +658,32 @@ function cf_smart_cache_batch_purge($urls_to_purge)
     if (empty($zone_id)) {
         return new WP_Error('missing_zone', 'Cloudflare zone ID is not set');
     }
-    $api_url = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
-    $chunks  = array_chunk($urls_to_purge, 30);
-    $results = [];
+    $api_url    = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
+    $batch_size = isset( $settings['rate_limit_batch_size'] ) ? (int) $settings['rate_limit_batch_size'] : 30;
+    $batch_size = max( 1, min( 100, $batch_size ) );
+    $chunks     = array_chunk( $urls_to_purge, $batch_size );
+    $results    = [];
     foreach ($chunks as $chunk) {
         $headers                  = [
             'Content-Type' => 'application/json',
         ];
         $headers['Authorization'] = 'Bearer ' . $api_token;
         $body                     = json_encode(['files' => $chunk]);
-        cf_smart_cache_check_rate_limit();
-        $response  = wp_remote_post($api_url, [
+        cf_smart_cache_purge_bucket( 'consume' );
+        $response  = cf_smart_cache_http_request( $api_url, [
             'headers' => $headers,
             'body'    => $body,
-            'timeout' => 15
-        ]);
+            'timeout' => 15,
+        ], 'batch purge' );
+        if ( is_wp_error( $response ) ) {
+            $results[] = $response;
+            continue;
+        }
         $validated = cf_smart_cache_validate_api_response($response, 'batch purge');
         $results[] = $validated;
         if (!is_wp_error($validated)) {
             do_action('cf_smart_cache_after_batch_purge', $chunk, $validated);
         }
-        sleep(1);
     }
     return $results;
 }
@@ -483,20 +709,25 @@ function cf_smart_cache_execute_purge($urls_to_purge)
     $urls_to_purge = array_values(array_unique($urls_to_purge));
     $api_url       = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
     cf_smart_cache_log(sprintf('Executing purge for %d URLs: %s', count($urls_to_purge), implode(', ', $urls_to_purge)));
-    cf_smart_cache_check_rate_limit();
-    $response           = wp_remote_post($api_url, [
+    cf_smart_cache_purge_bucket( 'consume' );
+    $response = cf_smart_cache_http_request( $api_url, [
         'method'  => 'POST',
         'headers' => $headers,
         'body'    => json_encode(['files' => $urls_to_purge]),
-        'timeout' => 15
-    ]);
-    $validated_response = cf_smart_cache_validate_api_response($response, 'cache purge');
-    if (is_wp_error($validated_response)) {
-        $message = "CF API Error: " . $validated_response->get_error_message();
+        'timeout' => 15,
+    ], 'cache purge' );
+    if ( is_wp_error( $response ) ) {
+        $message = "CF API Error: " . $response->get_error_message();
         cf_smart_cache_log($message, 'error');
     } else {
-        $message = sprintf('Success: Cloudflare purge request sent for %d URLs.', count($urls_to_purge));
-        cf_smart_cache_log($message);
+        $validated_response = cf_smart_cache_validate_api_response($response, 'cache purge');
+        if ( is_wp_error( $validated_response ) ) {
+            $message = "CF API Error: " . $validated_response->get_error_message();
+            cf_smart_cache_log($message, 'error');
+        } else {
+            $message = sprintf('Success: Cloudflare purge request sent for %d URLs.', count($urls_to_purge));
+            cf_smart_cache_log($message);
+        }
     }
     set_transient('cf_smart_cache_notice_' . get_current_user_id(), $message, 45);
 }
@@ -562,8 +793,8 @@ function cf_smart_cache_on_status_change($new_status, $old_status, $post)
     if ($new_status === 'publish' || $old_status === 'publish') {
         $urls = cf_smart_cache_get_post_purge_urls($post->ID);
         if (!empty($urls)) {
-            cf_smart_cache_log(sprintf('Post %d status changed from %s to %s, purging %d URLs', $post->ID, $old_status, $new_status, count($urls)));
-            cf_smart_cache_batch_purge($urls);
+            cf_smart_cache_log(sprintf('Post %d status changed from %s to %s, enqueuing %d URLs', $post->ID, $old_status, $new_status, count($urls)));
+            cf_smart_cache_enqueue_purge($urls);
         }
     }
 }
@@ -572,15 +803,15 @@ function cf_smart_cache_on_delete_post($post_id)
 {
     $urls = cf_smart_cache_get_post_purge_urls($post_id);
     if (!empty($urls)) {
-        cf_smart_cache_log(sprintf('Post %d deleted, purging %d URLs', $post_id, count($urls)));
-        cf_smart_cache_batch_purge($urls);
+        cf_smart_cache_log(sprintf('Post %d deleted, enqueuing %d URLs', $post_id, count($urls)));
+        cf_smart_cache_enqueue_purge($urls);
     }
 }
 add_action('delete_post', 'cf_smart_cache_on_delete_post', 10, 1);
 function cf_smart_cache_on_term_change($term_id)
 {
     $urls = [get_term_link($term_id), home_url('/')];
-    cf_smart_cache_batch_purge($urls);
+    cf_smart_cache_enqueue_purge($urls);
 }
 add_action('edited_term', 'cf_smart_cache_on_term_change', 10, 1);
 add_action('delete_term', 'cf_smart_cache_on_term_change', 10, 1);
@@ -605,7 +836,7 @@ add_action('rest_api_init', function ()
 function cf_smart_cache_get_plugin_info()
 {
     return [
-        'version'           => '2.2.0',
+        'version'           => '2.3.0',
         'min_wp_version'    => '5.0',
         'tested_wp_version' => '6.4',
         'min_php_version'   => '7.4',

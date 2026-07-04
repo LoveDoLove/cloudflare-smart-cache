@@ -70,6 +70,102 @@ function cf_smart_cache_settings_init()
         'cf_smart_cache',
         'cf_smart_cache_api_section'
     );
+    add_settings_section(
+        'cf_smart_cache_rate_limit_section',
+        __('Rate Limiting Settings', 'cf-smart-cache'),
+        null,
+        'cf_smart_cache'
+    );
+    add_settings_field(
+        'rate_limit_max',
+        __('Max Requests / Window', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $value = isset($options['rate_limit_max']) ? esc_attr($options['rate_limit_max']) : '1000';
+            printf(
+                '<input type="number" name="cf_smart_cache_settings[rate_limit_max]" value="%s" class="small-text" min="100" max="1200" step="50"> <span class="description">%s</span>',
+                $value,
+                esc_html__('Requests per 5-minute sliding window (max 1200)', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_retries',
+        __('Max Retries', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $value = isset($options['rate_limit_retries']) ? esc_attr($options['rate_limit_retries']) : '3';
+            printf(
+                '<input type="number" name="cf_smart_cache_settings[rate_limit_retries]" value="%s" class="small-text" min="1" max="5"> <span class="description">%s</span>',
+                $value,
+                esc_html__('Number of retry attempts on failure (1-5)', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_adaptive',
+        __('Adaptive Limiting', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $checked = ! empty($options['rate_limit_adaptive']) ? 'checked' : '';
+            printf(
+                '<label><input type="checkbox" name="cf_smart_cache_settings[rate_limit_adaptive]" value="1" %s> %s</label>',
+                $checked,
+                esc_html__('Automatically reduce limits when 429 responses are received', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_cf_plan',
+        __('Cloudflare Plan', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $plan = isset($options['rate_limit_cf_plan']) ? $options['rate_limit_cf_plan'] : 'free';
+            $plans = [
+                'free'       => __('Free', 'cf-smart-cache'),
+                'pro'        => __('Pro', 'cf-smart-cache'),
+                'business'   => __('Business', 'cf-smart-cache'),
+                'enterprise' => __('Enterprise', 'cf-smart-cache'),
+            ];
+            echo '<select name="cf_smart_cache_settings[rate_limit_cf_plan]">';
+            foreach ($plans as $key => $label) {
+                printf(
+                    '<option value="%s" %s>%s</option>',
+                    esc_attr($key),
+                    selected($plan, $key, false),
+                    esc_html($label)
+                );
+            }
+            echo '</select>';
+            printf(
+                ' <span class="description">%s</span>',
+                esc_html__('Used to set Purge API token bucket parameters', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
+    add_settings_field(
+        'rate_limit_batch_size',
+        __('Purge Batch Size', 'cf-smart-cache'),
+        function () {
+            $options = get_option('cf_smart_cache_settings', []);
+            $value = isset($options['rate_limit_batch_size']) ? esc_attr($options['rate_limit_batch_size']) : '30';
+            printf(
+                '<input type="number" name="cf_smart_cache_settings[rate_limit_batch_size]" value="%s" class="small-text" min="1" max="100"> <span class="description">%s</span>',
+                $value,
+                esc_html__('URLs per purge API request (max 100)', 'cf-smart-cache')
+            );
+        },
+        'cf_smart_cache',
+        'cf_smart_cache_rate_limit_section'
+    );
 }
 add_action('admin_init', 'cf_smart_cache_settings_init');
 
@@ -90,6 +186,24 @@ function cf_smart_cache_sanitize_settings($input)
     }
     if (isset($input['cf_smart_cache_zone_id'])) {
         $sanitized['cf_smart_cache_zone_id'] = sanitize_text_field($input['cf_smart_cache_zone_id']);
+    }
+    // Rate limit settings
+    if (isset($input['rate_limit_max'])) {
+        $sanitized['rate_limit_max'] = absint($input['rate_limit_max']);
+    }
+    if (isset($input['rate_limit_retries'])) {
+        $sanitized['rate_limit_retries'] = absint($input['rate_limit_retries']);
+    }
+    if (isset($input['rate_limit_cf_plan'])) {
+        $allowed_plans = ['free', 'pro', 'business', 'enterprise'];
+        $plan = sanitize_text_field($input['rate_limit_cf_plan']);
+        $sanitized['rate_limit_cf_plan'] = in_array($plan, $allowed_plans, true) ? $plan : 'free';
+    }
+    if (isset($input['rate_limit_adaptive'])) {
+        $sanitized['rate_limit_adaptive'] = '1';
+    }
+    if (isset($input['rate_limit_batch_size'])) {
+        $sanitized['rate_limit_batch_size'] = absint($input['rate_limit_batch_size']);
     }
     do_action('cf_smart_cache_after_settings_save', $sanitized, $input);
     return $sanitized;
@@ -116,18 +230,13 @@ function cf_smart_cache_fetch_zones()
         cf_smart_cache_log('No valid API credentials provided', 'error');
         return new WP_Error('missing_creds', 'API token not set. Please provide an API token.');
     }
-    $retry_attempts = 3;
-    $response       = null;
-    for ($i = 0; $i < $retry_attempts; $i++) {
-        $response = wp_remote_get('https://api.cloudflare.com/client/v4/zones', [
-            'headers' => $headers,
-            'timeout' => 15,
-        ]);
-        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) < 500) {
-            break;
-        }
-        cf_smart_cache_log(sprintf('Retrying zone fetch due to transient error (Attempt %d/%d)', $i + 1, $retry_attempts), 'warning');
-        sleep(2);
+    $response = cf_smart_cache_http_request( 'https://api.cloudflare.com/client/v4/zones', [
+        'method'  => 'GET',
+        'headers' => $headers,
+        'timeout' => 15,
+    ], 'zone fetching' );
+    if ( is_wp_error( $response ) ) {
+        return $response;
     }
     $validated_response = cf_smart_cache_validate_api_response($response, 'zone fetching');
     if (is_wp_error($validated_response)) {
@@ -295,20 +404,23 @@ function cf_smart_cache_purge_all_cache()
         return;
     }
     $api_url = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
-    cf_smart_cache_check_rate_limit();
-    $response           = wp_remote_post($api_url, [
+    $response = cf_smart_cache_http_request( $api_url, [
         'method'  => 'POST',
         'headers' => $headers,
         'body'    => json_encode(['purge_everything' => true]),
-        'timeout' => 15
-    ]);
-    $validated_response = cf_smart_cache_validate_api_response($response, 'purge all cache');
-    if (is_wp_error($validated_response)) {
-        $message = 'Error: ' . $validated_response->get_error_message();
+        'timeout' => 15,
+    ], 'purge all cache' );
+    if ( is_wp_error( $response ) ) {
+        $message = 'Error: ' . $response->get_error_message();
     } else {
-        $message = 'Success: All cache purged from Cloudflare.';
-        cf_smart_cache_log('Manual purge all cache executed');
-        do_action('cf_smart_cache_after_purge_all', $validated_response);
+        $validated_response = cf_smart_cache_validate_api_response($response, 'purge all cache');
+        if ( is_wp_error( $validated_response ) ) {
+            $message = 'Error: ' . $validated_response->get_error_message();
+        } else {
+            $message = 'Success: All cache purged from Cloudflare.';
+            cf_smart_cache_log('Manual purge all cache executed');
+            do_action('cf_smart_cache_after_purge_all', $validated_response);
+        }
     }
     set_transient('cf_smart_cache_notice_' . get_current_user_id(), $message, 45);
 }
@@ -394,6 +506,44 @@ function cf_smart_cache_display_cache_status()
         echo '</tbody></table>';
     } else {
         echo '<p>' . esc_html__( 'No bypass events recorded yet.', 'cf-smart-cache' ) . '</p>';
+    }
+
+    // Rate limit status
+    $rate_state = get_transient( 'cf_smart_cache_rate_state' );
+    if ( is_array( $rate_state ) ) {
+        echo '<h3>' . esc_html__( 'Rate Limit Status', 'cf-smart-cache' ) . '</h3>';
+        $state_colors = array(
+            'normal'   => '#46b450',
+            'warning'  => '#ffb900',
+            'critical' => '#dc3232',
+            'backoff'  => '#d63638',
+        );
+        $state_color = isset( $state_colors[ $rate_state['state'] ] ) ? $state_colors[ $rate_state['state'] ] : '#666';
+        echo '<table class="widefat striped" style="max-width:720px;"><tbody>';
+        printf(
+            '<tr><th style="width:240px;">%s</th><td><span style="color:%s;font-weight:bold;">%s</span></td></tr>',
+            esc_html__( 'State', 'cf-smart-cache' ),
+            esc_attr( $state_color ),
+            esc_html( strtoupper( $rate_state['state'] ) )
+        );
+        printf(
+            '<tr><th>%s</th><td>%d / %s</td></tr>',
+            esc_html__( 'Window Usage', 'cf-smart-cache' ),
+            count( $rate_state['window_log'] ),
+            esc_html( sprintf( __( '%d (5 min sliding)', 'cf-smart-cache' ), $rate_state['adapted_limit'] ) )
+        );
+        printf(
+            '<tr><th>%s</th><td>%d</td></tr>',
+            esc_html__( 'Consecutive 429s', 'cf-smart-cache' ),
+            (int) $rate_state['consecutive_429']
+        );
+        $queue = get_transient( 'cf_smart_cache_purge_queue' );
+        printf(
+            '<tr><th>%s</th><td>%d</td></tr>',
+            esc_html__( 'Queue Pending', 'cf-smart-cache' ),
+            is_array( $queue ) ? count( $queue ) : 0
+        );
+        echo '</tbody></table>';
     }
 
     // Recent cached URLs
