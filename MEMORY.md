@@ -10,19 +10,20 @@
 | 應用類型 | WordPress 插件 + Cloudflare 邊緣緩存解決方案 |
 | 開發者 | LoveDoLove |
 | 授權 | MIT |
-| 目前版本 | 2.4.0 |
+| 目前版本 | 2.5.0 |
 | PHP 版本 | 7.4+ (WordPress 5.0+) |
 | GitHub | https://github.com/LoveDoLove/cloudflare-smart-cache |
 
-### 程式碼統計 (v2.4.0)
+### 程式碼統計 (v2.5.0)
 
-- **PHP 總行數**: ~3,009 行（12 個活躍檔案，含 6 個類 + 54 個包裝函數 + 1 個 OOP admin + 3 個 view）
+- **PHP 總行數**: ~3,011 行（12 個活躍檔案，含 6 個類 + 54 個包裝函數 + 1 個 OOP admin + 3 個 view）
 - **類**: 6 個（`CF_Smart_Cache_API` / `CF_Smart_Cache_Cache` / `CF_Smart_Cache_Purge` / `CF_Smart_Cache_Stats` / `CF_Smart_Cache_Rate_Limiter` + `CF_Smart_Cache_Admin`）
 - **包裝函數**: 54 個（`core.php` 中的薄包裝，保持向後兼容）
 - **架構**: 從單體 `core.php`（1499行）+ `admin.php`（913行）遷移至 OOP 類結構
 - **AJAX Endpoints**: 6 個（`purge_all` / `purge_homepage` / `fetch_zones` / `auto_config` / `save_settings` / `fetch_logs`）
 - **JS**: inline vanilla XMLHttpRequest + 1 行 admin.js（jQuery 增強為空，核心使用 inline）
 - **CSS**: 16 行 admin.css
+- **Log 記錄點**: 所有使用者操作皆可追蹤（purge / 設定儲存 / Zone 刷新 / Auto-Config 備份套用還原 / Hit Rate 告警關閉 / API 錯誤）
 
 ### Hooks 與過濾器
 

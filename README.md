@@ -90,7 +90,15 @@ Key features:
 - [![Cloudflare API][Cloudflare]][Cloudflare-url]
 - [![PHPUnit][PHPUnit]][PHPUnit-url]
 
-### Key Improvements in v2.4.0
+### Key Improvements in v2.5.0
+
+- **Real-time activity log** — AJAX auto-refresh every 5 seconds via `fetch_logs` endpoint, color-coded rows by severity
+- **Comprehensive logging** — All user actions now logged: settings save, zone refresh, auto-config (backup/apply/rollback), hit rate alert dismiss, purge operations
+- Bug fix: Refresh Zone List button no longer disappears after click (button moved outside `innerHTML`-replaced container)
+- Complete code audit for `innerHTML` DOM patterns — all 6 usages verified safe
+- Cleanup: removed unused params/variables in zone refresh flow
+
+### Previous: Key Improvements in v2.4.0
 
 - Complete architecture rewrite: monolithic `core.php` (1499 lines) + `admin.php` (913 lines) split into 6 focused OOP classes
 - All operations use inline vanilla JS with `onclick` handlers — zero dependency on jQuery or external JS files
@@ -101,7 +109,6 @@ Key features:
 - **Cache hit rate alert** — Admin warning notice when hit rate < 30% for 3+ consecutive checks (50+ total requests minimum)
 - **Scheduled full-site purge** — Daily or Weekly WP-Cron option in Settings
 - **PHPUnit test framework** — 10 tests, 22 assertions across 3 test classes
-- **Real-time activity log** — AJAX auto-refresh every 5 seconds, color-coded rows by severity
 - **Developer hooks documentation** — `docs/developer-hooks.md` with all actions, filters, class reference, and JS API
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
