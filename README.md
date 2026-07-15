@@ -72,6 +72,7 @@ Key features:
 - **Cache Hit Rate Alert** — Admin warning when hit rate stays below 30% for 3+ consecutive checks
 - **Scheduled Full Purge** — WP-Cron driven daily or weekly automatic full cache clearance
 - **AJAX Admin Interface** — All operations (save, purge, refresh, auto-config) use inline vanilla JS with zero page reloads
+- **Real-Time Activity Log** — Live log viewer auto-refreshes every 5 seconds via AJAX polling, color-coded by severity
 - **Auto-Configuration Wizard** — One-click setup of Page Rules (Cache Everything), DNS Proxy (orange cloud), and zone settings, with backup/rollback
 - **Security Headers** — X-Content-Type-Options, X-Frame-Options, HSTS, X-XSS-Protection, Referrer-Policy
 - **Cache Statistics** — Track hits, misses, hit rate, bypass reasons, and cached URLs
@@ -100,6 +101,7 @@ Key features:
 - **Cache hit rate alert** — Admin warning notice when hit rate < 30% for 3+ consecutive checks (50+ total requests minimum)
 - **Scheduled full-site purge** — Daily or Weekly WP-Cron option in Settings
 - **PHPUnit test framework** — 10 tests, 22 assertions across 3 test classes
+- **Real-time activity log** — AJAX auto-refresh every 5 seconds, color-coded rows by severity
 - **Developer hooks documentation** — `docs/developer-hooks.md` with all actions, filters, class reference, and JS API
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -175,6 +177,7 @@ After activation and configuration:
 
 ### Logs Tab
 - View the last 50 log entries from plugin operations
+- Auto-refreshes every 5 seconds via AJAX — no manual page reload needed
 - Color-coded rows: info (normal), warning (yellow), error (red)
 
 ### Admin Bar

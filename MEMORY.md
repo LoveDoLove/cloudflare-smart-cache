@@ -16,13 +16,13 @@
 
 ### 程式碼統計 (v2.4.0)
 
-- **PHP 總行數**: ~3,828 行（13 個活躍檔案，含 6 個類 + 54 個包裝函數 + 1 個 OOP admin + 3 個 view）
+- **PHP 總行數**: ~3,009 行（12 個活躍檔案，含 6 個類 + 54 個包裝函數 + 1 個 OOP admin + 3 個 view）
 - **類**: 6 個（`CF_Smart_Cache_API` / `CF_Smart_Cache_Cache` / `CF_Smart_Cache_Purge` / `CF_Smart_Cache_Stats` / `CF_Smart_Cache_Rate_Limiter` + `CF_Smart_Cache_Admin`）
 - **包裝函數**: 54 個（`core.php` 中的薄包裝，保持向後兼容）
 - **架構**: 從單體 `core.php`（1499行）+ `admin.php`（913行）遷移至 OOP 類結構
-- **AJAX Endpoints**: 5 個（`purge_all` / `purge_homepage` / `fetch_zones` / `auto_config` / `save_settings`）
+- **AJAX Endpoints**: 6 個（`purge_all` / `purge_homepage` / `fetch_zones` / `auto_config` / `save_settings` / `fetch_logs`）
 - **JS**: inline vanilla XMLHttpRequest + 1 行 admin.js（jQuery 增強為空，核心使用 inline）
-- **CSS**: 14 行 admin.css
+- **CSS**: 16 行 admin.css
 
 ### Hooks 與過濾器
 
@@ -61,6 +61,7 @@
 - 按鈕使用 `type="button"` 而非 `type="submit"`（防止意外表單提交）
 - Tab 切換使用 CSS display 控制 + inline JS（無 AJAX 加載）
 - 設定保存 / Purge / Auto-Config 全部使用 AJAX 無刷新
+- 活動日誌視圖使用 JS 每 5 秒自動輪詢 AJAX 實現即時更新
 
 **專案慣例**:
 - API Token 絕不存儲在程式碼中
