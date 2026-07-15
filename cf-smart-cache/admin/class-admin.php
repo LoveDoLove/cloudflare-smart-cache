@@ -146,6 +146,21 @@ class CF_Smart_Cache_Admin
             'cf_smart_cache',
             'cf_smart_cache_rate_limit_section'
         );
+
+        add_settings_section(
+            'cf_smart_cache_purge_section',
+            __('Cache Purge Settings', 'cf-smart-cache'),
+            null,
+            'cf_smart_cache'
+        );
+
+        add_settings_field(
+            'purge_post_types',
+            __('Purge on Post Types', 'cf-smart-cache'),
+            array($this, 'render_purge_post_types'),
+            'cf_smart_cache',
+            'cf_smart_cache_purge_section'
+        );
     }
 
     public function sanitize_settings($input)
@@ -179,6 +194,9 @@ class CF_Smart_Cache_Admin
         }
         if (isset($input['rate_limit_batch_size'])) {
             $sanitized['rate_limit_batch_size'] = absint($input['rate_limit_batch_size']);
+        }
+        if (isset($input['purge_post_types']) && is_array($input['purge_post_types'])) {
+            $sanitized['purge_post_types'] = array_map('sanitize_key', $input['purge_post_types']);
         }
         do_action('cf_smart_cache_after_settings_save', $sanitized, $input);
         return $sanitized;
@@ -535,6 +553,23 @@ class CF_Smart_Cache_Admin
             $value,
             esc_html__('URLs per purge API request (max 100)', 'cf-smart-cache')
         );
+    }
+
+    public function render_purge_post_types()
+    {
+        $options = $this->get_settings();
+        $selected = isset($options['purge_post_types']) && is_array($options['purge_post_types']) ? $options['purge_post_types'] : array();
+        $post_types = get_post_types(array('public' => true), 'objects');
+        foreach ($post_types as $pt) {
+            $checked = in_array($pt->name, $selected, true) ? 'checked' : '';
+            printf(
+                '<label style="display:inline-block;min-width:120px;margin:2px 0;"><input type="checkbox" name="cf_smart_cache_settings[purge_post_types][]" value="%s" %s> %s</label>',
+                esc_attr($pt->name),
+                $checked,
+                esc_html($pt->label)
+            );
+        }
+        printf('<p class="description">%s</p>', esc_html__('Select which post types trigger cache purge on publish/update/delete. Unchecked types will be skipped.', 'cf-smart-cache'));
     }
 
     public function admin_bar_menu($wp_admin_bar)

@@ -169,20 +169,38 @@ class CF_Smart_Cache_Purge {
         ]));
     }
 
+    public function is_post_type_allowed($post_type) {
+        $settings = get_option('cf_smart_cache_settings', array());
+        $allowed  = isset($settings['purge_post_types']) && is_array($settings['purge_post_types']) ? $settings['purge_post_types'] : array();
+        if (empty($allowed)) {
+            $post_types = get_post_types(array('public' => true));
+            return in_array($post_type, $post_types, true);
+        }
+        return in_array($post_type, $allowed, true);
+    }
+
     public function on_status_change($new_status, $old_status, $post) {
         if ($new_status === 'publish' || $old_status === 'publish') {
+            if (!$this->is_post_type_allowed($post->post_type)) {
+                return;
+            }
             $urls = $this->get_post_purge_urls($post->ID);
             if (!empty($urls)) {
-                cf_smart_cache_log(sprintf('Post %d status changed from %s to %s, enqueuing %d URLs', $post->ID, $old_status, $new_status, count($urls)));
+                cf_smart_cache_log(sprintf('Post %d (%s) status changed from %s to %s, enqueuing %d URLs', $post->ID, $post->post_type, $old_status, $new_status, count($urls)));
                 $this->enqueue_purge($urls);
             }
         }
     }
 
     public function on_delete_post($post_id) {
+        $post_type = get_post_type($post_id);
+        if (!$post_type || !$this->is_post_type_allowed($post_type)) {
+            delete_post_meta($post_id, '_cf_smart_cache_purge_hash');
+            return;
+        }
         $urls = $this->get_post_purge_urls($post_id);
         if (!empty($urls)) {
-            cf_smart_cache_log(sprintf('Post %d deleted, enqueuing %d URLs', $post_id, count($urls)));
+            cf_smart_cache_log(sprintf('Post %d (%s) deleted, enqueuing %d URLs', $post_id, $post_type, count($urls)));
             $this->enqueue_purge($urls);
         }
         delete_post_meta($post_id, '_cf_smart_cache_purge_hash');
