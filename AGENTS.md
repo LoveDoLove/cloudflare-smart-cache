@@ -17,6 +17,7 @@ projects/cloudflare-smart-cache/
 ├── docs/
 │   └── developer-hooks.md    # 開發者 Hooks/Filter 文檔
 ├── tests/                    # PHPUnit 測試框架（10 tests）
+├── website/                  # VitePress 文檔網站（已部署至 Cloudflare Pages）
 └── .opencode/plans/          # 執行計劃文件
 ```
 
@@ -63,3 +64,4 @@ projects/cloudflare-smart-cache/
 - PHPUnit 測試框架（10 tests, 22 assertions）
 - 開發者文檔（docs/developer-hooks.md）
 - API 速率限制 + 指數退避
+- VitePress 文檔網站已部署至 Cloudflare Pages

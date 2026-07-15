@@ -23,7 +23,8 @@
 - **AJAX Endpoints**: 6 個（`purge_all` / `purge_homepage` / `fetch_zones` / `auto_config` / `save_settings` / `fetch_logs`）
 - **JS**: inline vanilla XMLHttpRequest + 1 行 admin.js（jQuery 增強為空，核心使用 inline）
 - **CSS**: 16 行 admin.css
-- **Log 記錄點**: 所有使用者操作皆可追蹤（purge / 設定儲存 / Zone 刷新 / Auto-Config 備份套用還原 / Hit Rate 告警關閉 / API 錯誤）
+- **Log 記錄點**: 所有使用者操作皆可追蹤
+- **文檔網站**: VitePress 靜態站，6 頁 Markdown，已部署至 Cloudflare Pages（https://cf-smart-cache.pages.dev）
 
 ### Hooks 與過濾器
 

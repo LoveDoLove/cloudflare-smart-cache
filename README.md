@@ -94,6 +94,7 @@ Key features:
 
 - **Real-time activity log** — AJAX auto-refresh every 5 seconds via `fetch_logs` endpoint, color-coded rows by severity
 - **Comprehensive logging** — All user actions now logged: settings save, zone refresh, auto-config (backup/apply/rollback), hit rate alert dismiss, purge operations
+- **VitePress documentation site** — Deployed to Cloudflare Pages at https://cf-smart-cache.pages.dev
 - Bug fix: Refresh Zone List button no longer disappears after click (button moved outside `innerHTML`-replaced container)
 - Complete code audit for `innerHTML` DOM patterns — all 6 usages verified safe
 - Cleanup: removed unused params/variables in zone refresh flow
@@ -206,6 +207,10 @@ The plugin provides the following hooks for custom integration:
 | `cf_smart_cache_after_purge_all` | Action | After full cache purge |
 
 See `docs/developer-hooks.md` for complete reference with parameters and examples.
+
+### Documentation Site
+
+Full documentation is available at [https://cf-smart-cache.pages.dev](https://cf-smart-cache.pages.dev), covering features, installation, usage, and FAQ.
 
 ### Running Tests
 
