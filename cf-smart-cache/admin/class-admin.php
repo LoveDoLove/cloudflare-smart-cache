@@ -456,8 +456,6 @@ class CF_Smart_Cache_Admin
         $options       = $this->get_settings();
         $selected_zone = $options['cf_smart_cache_zone_id'] ?? '';
         $zones_data    = cf_smart_cache_fetch_zones();
-        $ajax_url      = admin_url('admin-ajax.php');
-        $nonce         = wp_create_nonce('cf_smart_cache_ajax_nonce');
 
         echo '<div id="cf-sc-zone-container" data-selected="' . esc_attr($selected_zone) . '">';
         if (is_wp_error($zones_data)) {
@@ -494,9 +492,7 @@ class CF_Smart_Cache_Admin
         }
         echo '</div>';
         printf(
-            '<p style="margin-top:8px;"><button type="button" class="button button-small" onclick="cfSmartCacheRefreshZones(\'%s\', \'%s\')">%s</button></p>',
-            esc_js($ajax_url),
-            esc_js($nonce),
+            '<p style="margin-top:8px;"><button type="button" class="button button-small" onclick="cfSmartCacheRefreshZones()">%s</button></p>',
             esc_html__('Refresh Zone List', 'cf-smart-cache')
         );
     }
