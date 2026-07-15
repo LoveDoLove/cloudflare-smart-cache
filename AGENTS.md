@@ -1,561 +1,113 @@
-﻿# AI Agent 身份定義：Cloudflare Smart Cache
+通用代理人工程架構與行為規範 (Universal Agentic Architecture & Identity Specification)
 
-## 開始對話時
+本文件是本倉庫 AI 代理人（Agent）的「身份定義與行為規範行為準則」，也是每次對話的至高入口。本文件將「神諭級全端代理人工程鐵律」與「本地技能包（Agent Skills）工作流」進行深度綁定，確保 AI 助手在解決任何工程問題時，皆能遵循高解耦、高安全、可觀測的最高標準。
 
-每次開啟新的 Copilot 對話時，請先執行以下步驟：
+1. 倉庫核心結構 (Repository Structure)
 
-1. 請讀取 MEMORY.md 和 AGENTS.md，恢復你的身份和工作狀態
-2. 檢查 memory/tasks.md 確認是否有跨對話未完成的任務
-3. 繼續當前的工作
+本倉庫採用「自適應認知與技能架構」，結構如下：
 
----
+全局技能包
+%USERPROFILE%
+├── .agents/
+│   └── skills/               # AI Agent 技能包庫（可發現、可安裝、可複用）
 
-## 核心理念
-
-**Cloudflare Smart Cache AI Agent** 是一個專為 WordPress + Cloudflare 邊緣緩存項目量身打造的智能協作夥伴。
-
-### 主要特點
-- **專注於 WordPress 插件開發**：深度理解 WordPress 架構和最佳實踐
-- **Cloudflare API 專家**：熟悉 Cloudflare API 認證、Zone 管理、Purge API
-- **AI Agent 技能包體系**：使用標準化的技能包系統來擴展能力
-- **緊密與開發者協作**：提供清晰的 UI/UX、完整的文檔測試範式
-
----
-
-## 項目摘要
-
-**專案名稱**：Cloudflare Smart Cache  
-**類型**：WordPress 插件 + 邊緣緩存解決方案  
-**開發者**：LoveDoLove  
-**授權**：MIT License  
-**目前版本**：2.3.2
-
-這是一個功能齊全的 WordPress 插件，整合了 Cloudflare 邊緣緩存和自動清除功能，包括：
-
-- Cloudflare API Token 認證的 Edge HTML 緩存
-- 自動清除緩存機制（Post、Category、Term 變化時）
-- 生產級 Rate Limiting（滑動時窗 + Token Bucket + Exponential Backoff + Jitter）
-- 動態 TTL（內容感知：首頁/文章/歸檔/feed 不同 TTL）+ stale directives
-- 雙層 Purge URL 快取（wp_cache per-request + post_meta cross-request hash）
-- 高級管理控制面板（Settings 頁面）
-- 緩存統計儀表板（Hits/Misses/Hit Rate/Bypass Reasons）
-- 詳細的 Log 和錯誤處理（Enhanced Log 含 context + rolling 50 entries）
-- 支援多種 Post Type（public CPT 自動偵測）
-- REST API Cache Headers
-- 開發者 Hooks 和 Filters
-- 一鍵 Auto-Configuration Wizard（Page Rule / Origin Cache Control / DNS Proxy）
-- Plan-Aware Configuration（自動偵測 Cloudflare Plan 限制）
-- 備份/回滾機制（最多 3 版快照，ID 精確還原）
-
----
-
-## 創建的技能包
-
-本項目使用以下 AI Agent 技能包（全部來自開源，非自定義）：
-
-| 技能包 | 來源 | 用途 |
-|--------|------|------|
-| karpathy-guidelines | 本地安裝 | **減少 LLM 編碼常見錯誤的行為準則**<br>在編寫、審查或重構代碼時使用：避免過度複雜化、進行精準修改、揭示潛在假設、定義可驗證的成功標準。 |
-
-> **技能包位置**：.agents/skills/karpathy-guidelines/（本地安裝）
-
----
-
-## 代碼組織結構
-
-`
-cloudflare-smart-cache/
-├── AGENTS.md                      # AI Agent 身份定義（本文件）
-├── MEMORY.md                      # AI 長期記憶：用戶偏好、項目背景
+項目目錄
+projects/
+├── AGENTS.md                 # AI Agent 身份定義與行為規範（每次對話的入口）
+├── MEMORY.md                 # AI 长期记忆：用戶偏好、專案背景、持久約定
 ├── memory/
-│   ├── tasks.md                   # AI 任務追蹤（待辦 / 進行中 / 完成）
-│   └── YYYY-MM-DD.md              # 每日 AI 工作日誌
-├── cf-smart-cache/                # 插件核心代碼（2,558 行 PHP）
-│   ├── cf-smart-cache.php         # 插件入口（81 行）
-│   ├── admin/                     # 管理後台代碼
-│   │   └── admin.php              # 設置頁面、管理 UI（913 行）
-│   ├── includes/                  # 核心邏輯
-│   │   └── core.php               # 緩存、API、Hooks、工具函數（1,499 行）
-│   ├── languages/                 # 語言文件
-│   │   └── .keep
-│   ├── assets/                    # 資源文件
-│   │   └── logo.png
-│   └── uninstall.php              # 解除安裝清理（65 行）
-├── website/                       # 文檔網站（VitePress）
-│   ├── .vitepress/                # VitePress 配置
-│   ├── index.md                   # 主頁
-│   ├── features.md                # 功能展示
-│   ├── installation.md            # 安裝指南
-│   ├── usage.md                   # 使用說明
-│   ├── faq.md                     # 常見問題
-│   └── contact.md                 # 聯繫方式
-├── images/                        # Logo 和圖片資源
-├── .github/
-│   ├── ISSUE_TEMPLATE/            # Issue 模板（Bug 報告、功能請求）
-│   └── FUNDING.yml                # 贊助信息
-└── .agents/
-    └── skills/                    # AI Agent 技能包庫
-        └── karpathy-guidelines/    # 準則技能包
-`
-
----
-
-## AI Agent 工作模式
-
-### 1. 偵測任務類型
-
-每次收到任務時，請根據以下分類處理：
-
-#### A. 代碼開發相關
-- 插件功能開發或修改
-- Bug 修復和問題診斷
-- 代碼重構和優化
-- 安全性改進
-- 性能優化
-
-**優先使用技能包**：
-1. karpathy-guidelines - 確保代碼符合最佳實踐
-2. 檢查 WordPress codex 的對應 API
-3. 查驗 Cloudflare API 文檔
-
-#### B. 文檔相關
-- 更新 README.md
-- 撰寫新的文檔頁面
-- 創建用戶手册
-- 技術規格說明
-
-**優先參考**：
-- 現有 website/ 文件夾中的 Markdown 格式
-- README.md 的 GitHub README Template 結構
-- WordPress 官方文檔風格
-
-#### C. 測試相關
-- 單元測試編寫
-- 集成測試
-- 自動化測試設定
-- 測試覆蓋率分析
-
-**注意**：當前項目尚無測試文檔或腳本，如有需要請先規劃測試架構。
-
-#### D. 設計相關
-- Admin UI 美化
-- 佈局優化
-- 響應式設計
-- 圖標和 Logo 設計
-
-**參考**：
-- 現有 WordPress 插件界面風格
-- admin/admin.php 中的 HTML 結構
-
----
-
-## 優先使用 AI Agent 技能包
-
-### 當下可用的技能包
-
-| 技能包名稱 | 用途 | 是否可用 |
-|-----------|------|----------|
-| karpathy-guidelines | 减少LLM编码常见错误的行为准则 | ✅ 是（本地安裝） |
-
-### 技能包安裝規則
-
-**全部技能包必須來自 GitHub 開源倉庫，不得自定義：**
-
-1. **本地無適用技能** → 從 GitHub 或 Skills.sh 搜索
-2. **安裝後存放位置**：.agents/skills/<skill-name>/
-3. **更新索引**：統一在 .agents/skills 中管理
-
----
-
-## 每日 AI 工作模式
-
-### 每日結束時
-
-每次 AI 會話結束時，請執行以下步驟：
-
-1. **更新 memory/YYYY-MM-DD.md**
-   - 記錄當天完成的所有工作
-   - 記錄主要決策和背後原因
-   - 記錄遇到的問題和解決方案
-   - 記錄受影響的代碼文件和行號
-
-2. **更新 memory/tasks.md**
-   - 將所有「已完成」的任務標記為完成
-   - 刪除或歸檔已過期的待辦事項
-   - 繼續跟蹤「進行中」的任務
-
-3. **清理臨時變量**
-   - 刪除任何暫時性文件（如測試文件）
-   - 清理不必要的臨時變數
-
----
-
-## 代碼風格和最佳實踐
-
-### WordPress 開發規範
-
-1. **WordPress Native Functions**：優先使用 WordPress 原生函數
-2. **Race Conditions**：所有資料庫操作必須使用 WordPress Transients
-3. **Security**：輸入驗證和輸出轉義（escape_output）
-4. **Hooks & Filters**：盡量使用 WordPress Hooks 而非硬編碼
-5. **i18n**：所有文本均需支援翻譯（__(), _e(), _x()）
-6. **Debugging**：生產環境嚴禁直接印出錯誤訊息
-
-### Cloudflare API 規範
-
-1. **HTTP Methods**：全部使用 HTTPS（wp_remote_get/post/put/delete）
-2. **Authentication**：
-   - 優先使用 Bearer Token
-   - Email + API Key 作為備選方案
-3. **Error Handling**：使用 cf_smart_cache_validate_api_response()
-4. **Rate Limiting**：
-   - 使用 Transients 追蹤請求頻率
-   - 上限：1000 requests per 5 minutes
-   - 錯誤訊息需符合 Cloudflare 誤解釋
-5. **Response Processing**：
-   - 驗證 JSON 回應格式
-   - 檢查 ody['success'] 欄位
-   - 處理 ody['errors'] 陣列
-6. **Timeout 處理**：
-   - 設定 15 秒 timeout
-   - 最多重試 3 次
-   - 錯誤狀況時暫停 2 秒
-
----
-
-## 代碼原則
-
-專注於 WordPress 插件開發的核心邏輯，避免過度複雜化：
-
-- **精準修改**：只改動受影響的部分
-- **避免副作用**：確保修改不影響不相關的代碼
-- **可測試性**：定義清晰的輸入輸出
-- **文檔完善**：重要的函數和類別都應有註釋
-- **命名清晰**：變數和函數名應直觀表達用途
-
----
-
-## 緩存統計功能（v2.2.0 新增）
+│   ├── tasks.md              # AI 任務追蹤（待辦 / 進行中 / 完成）
+│   └── YYYY-MM-DD.md         # 每日 AI 工作日誌
+└── .github/
+    └── workflows/            # AI 自動化工作流（每日摘要、Issue 處理、部署）
 
-`cf-smart-cache/admin/admin.php` 內的 `cf_smart_cache_display_cache_status()` 會在 Settings > CF Smart Cache 頁面渲染以下資訊：
 
-| 區塊 | 內容 | 資料來源 |
-|------|------|---------|
-| Configuration | API Token / Zone ID 配置狀態（✔/✘） | `get_option('cf_smart_cache_settings')` |
-| Cache Performance | Hits、Misses、Hit Rate、Cached URLs Tracked、Last Bypass Reason | `cf_smart_cache_get_cache_stats()` |
-| Bypass Reasons | 7 種原因計數表（降冪排序） | `cf_smart_cache_get_bypass_reasons()` |
-| Rate Limit | Governor State、Window Usage、429s Count、Queue Pending | `cf_smart_cache_rate_state` / `cf_smart_cache_purge_queue` |
-| Recent Cached URLs | 最近 10 筆被快取的 URL | `cf_smart_cache_get_cached_urls(10)` |
+2. AI Agent 技能工作流 (Skill-Pack Engine)
 
-### 核心函數（core.php）
+技能包（Agent Skill）是本倉庫的核心機制——將可複用的 AI 能力封裝為標準單元，存放在 .agents/skills/<skill-name>/。主入口為 SKILL.md，AI 助手在接到任務時必須遵循以下工作流：
 
-| 函數 | 用途 |
-|------|------|
-| `cf_smart_cache_stats_keys()` | 集中管理 5 個 transient key |
-| `cf_smart_cache_increment_hit($url)` | 累加命中計數 + 記錄 URL |
-| `cf_smart_cache_increment_miss($reason)` | 累加未命中 + 記錄 bypass 原因 |
-| `cf_smart_cache_record_cache_url($url, $ts)` | 維護最多 1000 筆的 rolling URL 清單 |
-| `cf_smart_cache_record_bypass_reason($reason)` | 累加單一 bypass 原因計數 |
-| `cf_smart_cache_get_cache_stats()` | 回傳完整統計陣列 |
-| `cf_smart_cache_get_cached_urls($limit, $offset)` | 分頁回傳最新 URL |
-| `cf_smart_cache_get_bypass_reasons()` | 降冪排序的 bypass 原因計數 |
-
-### 計數觸發點（`cf_smart_cache_set_edge_headers()`）
-
-- **Bypass 分支**（7 種）→ `cf_smart_cache_record_bypass_reason($reason)`
-  - logged-in / admin / ajax / rest / preview / password / woocommerce
-- **Cacheable 分支** → `cf_smart_cache_increment_hit(home_url(...))`
-
-### Transient 命名空間
-
-| Key | 用途 | TTL |
-|-----|------|-----|
-| `cf_smart_cache_stats_hits` | 命中計數 | 1 小時 |
-| `cf_smart_cache_stats_miss` | 未命中計數 | 1 小時 |
-| `cf_smart_cache_cached_urls` | 最近 1000 個 URL | 1 小時 |
-| `cf_smart_cache_bypass_reasons` | 各原因計數 | 1 小時 |
-| `cf_smart_cache_last_bypass_reason` | 最近一次原因 | 1 小時 |
-| `cf_smart_cache_rate_state` | 滑動時窗狀態機 | 1 小時 |
-| `cf_smart_cache_purge_bucket` | Token Bucket 狀態 | 1 小時 |
-| `cf_smart_cache_purge_queue` | Debounced Purge 佇列 | 30 秒 |
-| `cf_smart_cache_recent_logs` | Rolling 50 筆 Log | 1 小時 |
-| `cf_smart_cache_zone_list` | Zone 列表 | 1 小時 |
-| `cf_smart_cache_zone_plan` | Zone Plan ID | 24 小時 |
-| `cf_smart_cache_page_rules` | Page Rules 列表 | 24 小時 |
-
-### 設計決策
-
-- **Hit Rate 色彩門檻**：≥70% 綠 / ≥40% 黃 / <40% 紅
-- **Bypass 與 Misses 分離**：bypass 走 `record_bypass_reason()`（不重複計入 Misses），Misses 保留供未來 REST 端點呼叫
-- **URL 1000 筆上限**：超過自動 `array_slice(-1000)`
-- **零外部依賴**：admin 儀表板只用 HTML 表格，不引入 Chart.js
-
----
-
-## Auto-Configuration Wizard（v2.3.2 新增）
-
-`cf-smart-cache/admin/admin.php` 內的 `cf_smart_cache_display_auto_config()` 在 Settings > CF Smart Cache 頁面底部渲染一個完整的設定精靈區塊。
-
-### 功能
-
-| 功能 | 說明 |
-|------|------|
-| **狀態偵測** | `cf_smart_cache_get_config_status()` 回傳 Zone/Plan/Page Rule/Origin CC/DNS Proxy/Backup 完整狀態 |
-| **Page Rule 套用** | 建立或更新規則，payload 含 `cache_level=cache_everything` + `explicit_cache_control=on`（避免 `edge_cache_ttl=0` 被 Free plan 拒絕） |
-| **DNS Proxy** | 批次 PATCH 啟用 orange cloud，支援 root-only 或全部策略 |
-| **設定備份** | 最多 3 版快照存放於 `cf_smart_cache_config_backups` option |
-| **回滾** | 回滾前自動備份目前狀態，ID 精確匹配還原 |
-
-### Plan-Aware Configuration（v2.3.2 Phase 4b）
-
-| 函數 | 用途 |
-|------|------|
-| `cf_smart_cache_get_zone_plan()` | GET /zones/{zone_id} 回傳 plan id（free/pro/business/enterprise），transient 24h |
-| `cf_smart_cache_get_plan_limits($plan)` | 靜態對照表：max_page_rules、edge_cache_ttl_min |
-
-**Plan 限制表**
-
-| Plan | Max Page Rules | edge_cache_ttl_min |
-|------|---------------|-------------------|
-| free | 3 | 7200 |
-| pro | 20 | 0 |
-| business | 50 | 0 |
-| enterprise | 125 | 0 |
-
-**Admin UI Zone 行顯示**：`Zone: example.com (FREE) — Page Rules: 2/3 used`
-
-### 已知的 API 限制
-
-1. **`explicit_cache_control`** 不是 Zone-level 設定，只存在於 Page Rule action
-2. **`edge_cache_ttl=0`（Respect Existing Headers）** 在 Free plan 不接受，最低 7200s
-3. **Partner/Reseller 的 plan.id** 可能是 UUID，需 fallback 到 `plan.name`
-4. **Token 權限無法預先驗證** — `/token/verify` 不回傳 scope 列表，採 fail-and-tell
-
----
-
-## 安全性考量
-
-### 敏感資訊處理
-
-1. **API Token**：絕不存儲在代碼中
-2. **Settings Sanitization**：所有用戶輸入需經過 sanitize_text_field()
-3. **Capability Checks**：Admin 功能需檢查 current_user_can('manage_options')
-4. **Nonce Verification**：所有表單和 URL 查詢需驗證 WP Nonce
-5. **SQL Injection Prevention**：使用 $wpdb->prepare() 或 WP 查詢函數
-
-### 安全 Headers
-
-`php
-// REST API Cache Headers
-if (is_user_logged_in()) {
-    header('Cache-Control: no-cache, no-store, must-revalidate');
-    header('x-HTML-Edge-Cache: nocache');
-} else {
-    header('Cache-Control: public, max-age=300, s-maxage=600');
-    header('x-HTML-Edge-Cache: cache');
+2.1 技能調用工作流 (Invocation Workflow)
+
+任務檢索：接到任何代碼、架構或優化任務時，AI 必須優先檢索 本地 .agents/skills/ 目錄，查看是否有符合的技能包。
+
+外部導入 (不自行編寫)：若本地無合適技能包，嚴禁 AI 自行憑空編寫技能包。必須優先搜尋 GitHub 開源社群（如 github.com/fields/... 等開源 Skills）或 Skills.sh 進行 Clone，並統一安裝存放至 .agents/skills/<skill-name>/。
+
+加載與聲明：調用技能包時，AI 必須在對話中明確聲明：「偵測到相關任務，正在加載本地技能包 [skill-name]...」，並嚴格執行該技能包中的 SKILL.md 指引。
+
+2.2 已內置技能包索引
+
+karpathy-guidelines：減少 LLM 編碼常見錯誤的行為準則。在編寫、審查或重構代碼時使用這些準則，可以避免過度複雜化，進行精準修改，揭示潛在假設，並定義可驗證的成功標準。
+
+3. 代理人架構三大不妥協鐵律 (The Three Uncompromisables)
+
+不論任務規模多小，AI 助手在執行任何工具呼叫與後端變更時，必須 100% 遵守以下三大鐵律：
+
++---------------------------------------------------------------------------------+
+|                                 三大不妥協鐵律                                   |
+|                                                                                 |
+|  1. 受控副官防禦 (Security)   ====>  JWT/ACL 系統級隔離，嚴禁信任 Prompt 意志    |
+|  2. 宣告式工具解耦 (Decoupling) ====>  使用標準化介面 (MCP/JSON)，工具與 LLM 完全分離  |
+|  3. 軌跡即真理 (Observability) ====>  採用 OpenTelemetry 標準，完整追蹤決策 Spans  |
++---------------------------------------------------------------------------------+
+
+
+3.1 鐵律一：受控副官防禦 (Confused Deputy Defense)
+
+核心原則：永遠不要相信 Prompt 能守住系統安全。
+
+實踐：AI 助手本質上只是個「信差（Messenger）」。當代表用戶調用後端工具（API、資料庫、檔案系統）時，工具執行層必須依據使用者的安全憑證（JWT / ACL）進行硬性隔離校驗。縱使 AI 遭受 Prompt 注入（Prompt Injection）被洗腦，系統層也必須直接拒絕其越權存取。
+
+3.2 鐵律二：宣告式工具解耦 (Declarative Tool Decoupling)
+
+核心原則：禁止將工具呼叫邏輯與 LLM 驅動程式碼硬編碼（Hardcode）在一起。
+
+實踐：工具必須是以宣告式（如 Model Context Protocol 協定或 JSON Schema）定義。模型僅負責輸出調用決策與參數。這確保了當底層模型（如從 Gemini 換到 Claude）迭代時，一條工具程式碼都不需要修改。
+
+3.3 鐵律三：軌跡即真理 (Trajectory is the Truth)
+
+核心原則：拋棄傳統 console.log，採用標準「軌跡追蹤（Trace）」。
+
+實踐：必須完整記錄每一次推理的上下文。一個標準的 Trace Span 必須依循 OpenTelemetry GenAI Semantic Conventions 標準格式輸出：
+
+{
+  "trace_id": "8f3b1a2c5e7d9f0a1b2c3d4e5f6a7b8c",
+  "span_id": "4a5b6c7d8e9f0a1b",
+  "name": "agent_execution_loop",
+  "attributes": {
+    "gen_ai.system": "gemini",
+    "gen_ai.request.model": "gemini-2.5-pro",
+    "gen_ai.usage.input_tokens": 42105,
+    "gen_ai.usage.output_tokens": 1024,
+    "agent.name": "EnterpriseDevAgent",
+    "agent.loop.iterations": 3
+  }
 }
-`
 
----
 
-## 性能考量
+4. 動態上下文預算與中斷機制 (Context & Preemption)
 
-### Transient 使用策略
+預算分配公式：
 
-1. **短暫快取**（1-3600 秒）
-   - Zone 列表：1 小時
-   - Zone Plan：24 小時
-   - Page Rules：24 小時
-   - Rate Limit 狀態：1 小時
-   - 最近 Log：1 小時
+$$\text{Context Budget} = \text{Model Max Tokens} - \text{Target Output Tokens (Reserved)} - \text{Safety Buffer}$$
 
-2. **批量操作**
-   - Purge URLs 使用批次請求（chunked, max 30-100 per batch）
-   - 避免 API 請求過多
-   - Debounced Queue 合併 2 秒內的清除請求
+語境剪枝策略：
 
-3. **Lazy Loading**
-   - Admin 數據按需載入
-   - 避免未使用時的 API 調用
+工作記憶 (Working Memory)：保留最新 $N$ 輪的原始對話，超出限制則背景調用 LLM 生成「摘要（Summary）」。
 
----
+聲明式記憶 (Declarative Memory)：使用語義相似度過濾向量資料庫（Vector DB）內容，設定 $0.78$ 以上門檻避免無關雜訊。
 
-## 開發流程
+超時與循環阻斷 (Preemption)：當 LLM 出現「邏輯死循環」或對同一個 API 連續發出 5 次錯誤請求時，執行階段（Runtime）必須在指定步數（如 Max 10 Steps）內主動阻斷，並執行 Fallback 降級處理與優雅報錯。
 
-### 功能開發流程
+5. 生產就緒檢核清單 (Production Checklist)
 
-1. **需求分析**：清楚定義輸入輸出和預期行為
-2. **代碼設計**：
-   - 觀察現有程式碼架構
-   - 考慮 hooks 和 filters
-   - 規劃 Transient 快取策略
-3. **實作**：
-   - 使用 WordPress 語法
-   - 嚴格遵循 Cloudflare API 規範
-   - 充分測試（手動測試）
-4. **檢查**：
-   - 使用 karpathy-guidelines 驗證
-   - 檢查是否有安全性漏洞
-   - 檢查代碼可讀性
+在將任何代理人系統推向生產環境前，請確認已落實以下檢核點：
 
-### Bug 修復流程
+[ ] 受控副官防禦：如果用戶輸入注入指令要求越權操作，後端工具層是否能依靠 JWT/ACL 強制拒絕，而非僅僅依賴 Prompt 拒絕？
 
-1. **問題診斷**：
-   - 查看 Log（如果存在）
-   - 模擬觸發條件
-   - 分析代碼執行路徑
-2. **修復實作**：
-   - 根本原因修正（非表面修補）
-   - 增加更完整的錯誤處理
-3. **測試**：
-   - 驗證修復有效
-   - 確保不引入新 Bug
-   - 檢查對其他功能的影響
+[ ] 模型無關性 (Model-agnostic)：工具與 LLM 驅動層是否完全解耦？若明天更換底層大模型，是否能做到一條工具程式碼都不改？
 
----
+[ ] 超時熔斷：系統是否能在指定步數（如 Max 10 Steps）內主動阻斷死循環？
 
-## 語言政策
+[ ] Context 溢出保護：當多輪對話長度接近臨界值時，系統是否能自動對歷史對話進行 Sliding Window 裁剪或自動摘要？
 
-### 溝通語言
-
-- **代碼變數和函數**：英文
-- **代碼註釋**：英文
-- **User-facing text**：使用 WordPress 的 __(), _e() 翻譯函數（支援多語系）
-- **Log 和錯誤訊息**：英文（WP_DEBUG_LOG 格式）
-- **本文件**：繁體中文
-
----
-
-## 常見任務模板
-
-### 向用戶解釋代碼邏輯
-
-`
-我已經分析完代碼，現在為您解釋：
-
-**核心概念**：
-1. 代碼主要做什麼
-2. 使用了哪些 WordPress Hooks
-3. Cloudflare API 如何被調用
-
-**執行流程**：
-[步驟 1] → [步驟 2] → [步驟 3]
-
-**關鍵決策**：
-- 為什麼選擇這種實現方式
-- 有哪些替代方案及為何棄用
-- 邊界情況如何處理
-`
-
-### 關於修改代碼的建議
-
-`
-我建議進行以下修改：
-
-**為什麼需要修改**：
-1. 問題描述
-2. 影響範圍分析
-
-**建議方案**：
-1. 新增/修改的代碼位置
-2. 說明實現方式
-3. 可能的影響
-
-**需要您注意的風險**：
-1. 對現有功能的影響
-2. 性能變化
-3. 安全性考量
-`
-
----
-
-## 每日例程日誌模板
-
-`markdown
-# YYYY-MM-DD AI 工作日誌
-
-## 完成的工作
-
-### [下午] 16:00 - 17:00 [任務標題]
-- **內容詳述**
-- **修改代碼文件**：cf-smart-cache/xxx.php
-
-### [上午] 10:00 - 11:00 [任務標題]
-- **內容詳述**
-
-## 主要決策
-
-- 決策 1：為什麼選擇方案 A 而非方案 B
-- 決策 2：處理風險的方式
-
-## 遇到的問題和解決方案
-
-- 問題：...
-- 解決方法：...
-
-## 受影響的文件
-
-- cf-smart-cache/some.php:123-145
-- website/something.md
-
-## 下次需要注意的事項
-
-- 待改進點 1
-- 待改進點 2
-`
-
----
-
-## 知識庫鏈接
-
-### 官方文檔
-
-- [WordPress Plugin Handbook](https://developer.wordpress.org/plugins/)
-- [Cloudflare API Documentation](https://api.cloudflare.com/)
-- [WordPress REST API](https://developer.wordpress.org/rest-api/)
-
-### 項目相關
-
-- [GitHub Repository](https://github.com/LoveDoLove/cloudflare-smart-cache)
-- [Issues](https://github.com/LoveDoLove/cloudflare-smart-cache/issues)
-- [Documentation Site](website/)
-
----
-
-## 持續改進
-
-### AI Agent 成長路徑
-
-1. **加深 WordPress 理解**
-   - 熟悉常見 Hooks 和 Filters
-   - 理解 WP Transients 機制
-   - 掌握 WP_Query 和資料庫最佳實踐
-
-2. **提升 Cloudflare API 精度**
-   - 熟悉所有可用 API 端點
-   - 理解 Cache Purge 模式
-   - 學習 API Rate Limiter 規則
-
-3. **優化 AI Agent 體驗**
-   - 更準確地理解用戶需求
-   - 提供更完整的上下文
-   - 減少不必要的假設
-
----
-
-**最後更新**：2026-07-05  
-**版本**：2.3.2
-" - 2026-06-27: 实现了缓存统计功能（命中/未命中计数器、已缓存 URL "列表、绕过原因追踪、管理员统计仪表盘）。 
-
----
-
-## 變更日誌
-
-- **2.3.2** (2026-07-05) — Auto-Configuration Wizard + Plan-Aware Configuration（Phase 4a + 4b）
-  - 一鍵偵測/套用/備份/回滾 Cloudflare Page Rule, Origin Cache Control, DNS Proxy 設定
-  - Plan-Aware：自動查詢 zone plan 決定可用參數（Free plan edge_cache_ttl_min=7200）
-  - Bug 修復：auth header 注入、explicit_cache_control 非 Zone setting、DNS name 正規化、UUID plan ID 處理
-- **2.3.1** (2026-07-05) — 緩存機制核心優化 Phase 1：廢棄舊式 purge0/1/2 系統、動態 TTL + stale directives、Purge URL 生成快取（wp_cache + post meta）
-- **2.3.0** (2026-07-05) — 生產級 Rate Limiting 優化：滑動時窗、Token Bucket、Exponential Backoff with Jitter、Adaptive Limit、Debounced Purge Queue、HTTP Executor Retry Layer、Admin Dashboard 可視化
-- **2.2.0** (2026-06-28) — 緩存統計功能 (Cache Statistics Dashboard)、修復 cf_smart_cache_display_cache_status undefined fatal error、修正函數命名對齊
-- **2.1.0** (2025-09) — 初版釋出、VitePress 文檔網站
+[ ] 標準化軌跡 (Trace)：當線上用戶報錯時，後端是否能一鍵調出該次決策的 OpenTelemetry 結構化 Trace 進行快速除錯？

@@ -1,228 +1,107 @@
-﻿# Cloudflare Smart Cache - AI Memory
+AI 長期記憶與專案約定 (AI Long-Term Memory & Project Conventions)
 
-## Project Overview
-**Repository:** [cloudflare-smart-cache](https://github.com/LoveDoLove/cloudflare-smart-cache)  
-**Created:** 2025-09  
-**Maintainer:** LoveDoLove  
+本文件是本倉庫 AI 代理人的「長期記憶與專案約定中心」。每一次與 AI 開始新對話時，AI 必須首先讀取本檔案與 AGENTS.md，以恢復對當前專案、技術棧、用戶偏好與持久約定的全面認知。
 
-Cloudflare Smart Cache 是一個專為 WordPress 打造的 Cloudflare 邊緣緩解方案，提供 HTML 邊緣緩存、自動清除緩存、高級管理控制等功能。
+1. 專案基礎設定 (Project Context)
 
-## Current Project Status
-- **Version:** 2.3.2 (plugin: cf-smart-cache/cf-smart-cache.php)
-- **Last Updated:** 2026-07-05
-- **Testing:** Tested up to WordPress 6.4
-- **Min Requirements:** WordPress 5.0, PHP 7.4
-- **License:** MIT
-- **Total PHP:** 2,558 lines across 4 files (81 + 913 + 1,499 + 65)
-- **Functions:** 69 total (2 lifecycle, 49 core, 15 admin, 1 uninstall)
-- **Cloudflare API calls:** 13 distinct endpoints via `cf_smart_cache_http_request()`
-- **Transients:** 12 distinct keys managed
-- **Hooks:** 21 add_action, 3 do_action (custom), 3 apply_filters
+本節記錄當前專案的根本設定，請根據實際情況進行動態更新：
 
-## Repository Structure
+應用名稱 (App Name): Cloudflare Smart Cache
 
-`
-cloudflare-smart-cache/
-├── cf-smart-cache/              # Plugin code (2,558 lines PHP)
-│   ├── cf-smart-cache.php       # Plugin main entry (81 lines)
-│   ├── admin/                   # Admin UI and settings
-│   │   └── admin.php            # Settings page + auto-config wizard (913 lines)
-│   ├── includes/                # Core logic
-│   │   └── core.php             # Cache, API, hooks, auto-config (1,499 lines)
-│   ├── assets/
-│   │   └── logo.png
-│   ├── languages/
-│   │   └── .keep
-│   └── uninstall.php            # Cleanup on deactivation (65 lines)
-├── website/                     # Documentation site (VitePress)
-│   ├── .vitepress/              # VitePress config
-│   ├── index.md                 # Landing page
-│   ├── features.md              # Features showcase
-│   ├── installation.md          # Installation guide
-│   ├── usage.md                 # Usage instructions
-│   ├── faq.md                   # Frequently asked questions
-│   └── contact.md               # Contact page
-├── images/                      # Logo and assets
-├── .github/
-│   ├── ISSUE_TEMPLATE/          # Bug reports and feature requests
-│   └── FUNDING.yml              # Sponsor info
-├── .agents/
-│   └── skills/                  # AI Agent skill packages
-│       └── karpathy-guidelines/
-├── memory/                      # AI memory storage
-│   ├── tasks.md                 # Task tracking (pending/in-progress/completed)
-│   └── YYYY-MM-DD.md            # Daily AI work logs
-├── AGENTS.md                    # AI Agent identity definition
-├── MEMORY.md                    # This file
-├── README.md                    # GitHub README
-├── BLANK_README.md              # Template
-├── LICENSE                      # MIT
-└── .github/...                  # Templates
-`
+應用類型 (App Type): WordPress 插件 + Cloudflare 邊緣緩存解決方案
 
-## Feature Map
+開發者 (Developer): LoveDoLove
 
-### Core Cache System
-- **Edge HTML Caching** — Public pages cached at Cloudflare edge via `cf_smart_cache_set_edge_headers()`
-- **Dynamic TTL (v2.3.1)** — Content-aware TTL: home (600s), singular (1800s), archives (3600s), feed (900s), REST (300s); stale-while-revalidate + stale-if-error directives
-- **Cache Tags** — Cache-Tag response header (WIP, future CF functionality)
-- **Header Filtering** — `cf_smart_cache_filter_headers()` sanitizes outgoing headers
+授權 (License): MIT
 
-### Cache Invalidation (v2.3.1 full rewrite)
-- **Old purge0/1/2 system fully removed** — Replaced with single unified `cf_smart_cache_purge_post()`
-- **Purge URL cache** — Two-layer cache: wp_cache (per-request) + post_meta (cross-request hash) via `cf_smart_cache_get_purge_urls()`
-- **URL generation chain** — `cf_smart_cache_generate_and_cache_post_urls()` → `cf_smart_cache_get_post_related_urls()` expands to home, feed, post type archive, taxonomy archives, adjacent posts, author archives
-- **Single post purge** — `cf_smart_cache_purge_post_urls($post_id)` reads cached URL list and purges
-- **Full site purge** — `cf_smart_cache_purge_site()` sends purge_everything to CF API
+目前版本 (Version): 2.3.2
 
-### Rate Limiting (v2.3.0)
-- **Sliding Window** — `cf_smart_cache_rate_limit_check()` tracks timestamps in transient; default 1000 req/5min
-- **Token Bucket** — `cf_smart_cache_try_consume_token()` + `cf_smart_cache_refill_bucket()` with adaptive capacity
-- **Exponential Backoff + Jitter** — `cf_smart_cache_http_request()` retries 3x with jitter
-- **Debounced Purge Queue** — `cf_smart_cache_queue_purge()` aggregates URLS for 2s, then flushes via `cf_smart_cache_flush_purge_queue()`
-- **Admin Dashboard** — Rate limit status + queue status visible in settings
+PHP 版本: 7.4+ (WordPress 5.0+ 測試至 6.4)
 
-### Auto-Configuration Wizard (v2.3.2)
-- **Config Status** — `cf_smart_cache_get_config_status()` returns complete status of Zone/Plan/Page Rule/Origin CC/DNS Proxy/Backup
-- **Page Rule** — Create/update cache-everything rule with `cache_level=cache_everything` + `explicit_cache_control=on`
-- **DNS Proxy** — Batch PATCH enable orange cloud (root-only or all records)
-- **Backup** — 3-version config snapshots in `cf_smart_cache_config_backups` option
-- **Rollback** — Pre-rollback backup + ID-exact restoration
-- **Plan-Aware** — `cf_smart_cache_get_zone_plan()` probes CF plan; Free plan limited to 3 page rules, edge_cache_ttl_min=7200
+前端技術棧 (Frontend): WordPress Admin UI (原生 PHP + HTML 表格) / VitePress (文檔網站)
 
-### Cache Statistics (v2.2.0)
-- **Hits/Misses** — Incremented in `cf_smart_cache_set_edge_headers()` cacheable/bypass branches
-- **Bypass Reasons** — 7 tracked reasons (logged-in, admin, ajax, rest, preview, password, woocommerce)
-- **URL Tracking** — Rolling 1000-entry list with timestamps
-- **Dashboard** — Color-coded hit rate (green ≥70%, yellow ≥40%, red <40%)
+後端技術棧 (Backend): PHP (WordPress 插件) + Cloudflare API (REST)
 
-## Key Architecture Decisions
+主權部署環境 (Deployment): 自托管 WordPress / GitHub Pages (文檔網站)
 
-1. **All core logic in `core.php`** — Single-file approach keeps complexity manageable
-2. **Transients over options** — Auto-expiring storage for stats, rate state, and cached data
-3. **Wrapper for wp_remote_* (`cf_smart_cache_http_request`)** — Centralized retry + backoff + error handling
-4. **No external JS/CSS** — Admin dashboard uses raw HTML tables, no Chart.js
-5. **Plan-awareness at config time** — Wizard adapts to Free plan limits rather than failing
+GitHub: https://github.com/LoveDoLove/cloudflare-smart-cache
 
-## Known API Limitations
+程式碼統計 (截至 v2.3.2):
+- PHP 總行數: 2,558 行 (4 個檔案: 81 + 913 + 1,499 + 65)
+- 函數總數: 69 個 (2 生命週期 + 49 核心 + 15 管理員 + 1 卸載)
+- Cloudflare API 端點: 13 個 (經由 cf_smart_cache_http_request())
+- Transient Keys: 12 個
+- Hooks: 21 add_action + 3 do_action + 3 apply_filters
 
-- `explicit_cache_control` is a Page Rule action, NOT a Zone setting
-- `edge_cache_ttl=0` (Respect Existing Headers) rejected by Free plan; minimum 7200s
-- Partner/Reseller `plan.id` may be UUID; fallback to `plan.name`
-- Token `/token/verify` doesn't return scope list; policy is fail-and-tell
+2. 使用者偏好與互動慣例 (User Preferences)
 
-## Plugin Lifecycle Hooks
-- **Activation:** Initialize settings, create transients
-- **Deactivation:** Clear transients, remove admin notices
-- **Post Status Change:** transition_post_status hook
-- **Post Deletion:** delete_post hook
-- **Term Management:** edited_term and delete_term hooks
+溝通語言：預設使用 繁體中文 (Traditional Chinese) 進行所有對話、架構解釋與日誌記錄（除程式碼註解、變數命名與技術文檔採用英文）。
 
-## WordPress Hooks in Use
+程式碼風格：
+- 追求極簡與健壯性，嚴禁過度設計
+- 優先使用 WordPress 原生函數與 WP 編碼標準
+- 使用型別安全與現代 PHP 語法
+- 必須符合內置技能包 karpathy-guidelines 的編碼行為準則
+- 輸入驗證 (sanitize) + 輸出轉義 (escape) — 所有用戶輸入須 sanitize_text_field()，所有輸出須 esc_html/esc_url/wp_kses
+- Nonce 驗證 — 所有表單和 URL 查詢需驗證 WP Nonce
+- Capability Checks — Admin 功能需檢查 current_user_can('manage_options')
+- 資料庫操作使用 $wpdb->prepare() 或 WP 查詢函數預防 SQL 注入
+- 生產環境嚴禁直接印出錯誤訊息
+- 所有文本均需支援 i18n 翻譯 (__(), _e(), _x())
 
-### Actions (consumed by plugin)
-| Hook | Handler | Purpose |
-|------|---------|---------|
-| `init` | `cf_smart_cache_set_edge_headers()` | Set cache headers on every page load |
-| `admin_init` | Settings registration | Register plugin settings |
-| `admin_menu` | `cf_smart_cache_add_admin_menu()` | Add settings page menu |
-| `admin_notices` | `cf_smart_cache_display_admin_notice()` | Show config warnings |
-| `admin_bar_menu` | `cf_smart_cache_admin_bar_menu()` | Quick purge button |
-| `admin_post_cf_smart_cache_purge_all` | Handler | Purge all from admin bar |
-| `admin_post_cf_smart_cache_purge_current` | Handler | Purge current page from admin bar |
-| `wp_trash_post` | `cf_smart_cache_purge_on_post_save()` | Purge on post trash |
-| `publish_post` | `cf_smart_cache_purge_on_post_save()` | Purge on publish |
-| `edit_post` | `cf_smart_cache_purge_on_post_save()` | Purge on edit |
-| `delete_post` | `cf_smart_cache_purge_post()` | Purge on deletion |
-| `auto-draft_to_publish` | `cf_smart_cache_generate_and_cache_post_urls()` | Pre-cache URLs on publish |
-| `transition_post_status` | `cf_smart_cache_purge_post_urls()` | Purge on status transit |
-| `edited_term` | `cf_smart_cache_purge_term()` | Purge term archive |
-| `delete_term` | `cf_smart_cache_purge_term()` | Purge term archive |
-| `wp_update_nav_menu` | `cf_smart_cache_purge_site()` | Purge all on menu change |
-| `edit_user_profile_update` | `cf_smart_cache_purge_site()` | Purge all on profile change |
-| `switch_theme` | `cf_smart_cache_purge_site()` | Purge all on theme switch |
+專案慣例：
+- API Token 絕不存儲在程式碼中
+- 使用 Transients（而非 Options）儲存短期快取資料，設定合理 TTL
+- 所有 wp_remote_* 呼叫須經由 cf_smart_cache_http_request() 包裝（含重試、退避、錯誤處理）
+- HTTP 請求設定 15 秒 timeout，最多重試 3 次
+- 禁止在程式碼/文檔中使用 emoji
+- 重視向後相容性
+- 新功能須有完整文檔說明
 
-### Custom Hooks Emitted (do_action)
-| Hook | Trigger | Parameters |
-|------|---------|------------|
-| `cf_smart_cache_after_batch_purge` | After API purge | `$urls` |
-| `cf_smart_cache_after_purge_all` | After full purge | — |
-| `cf_smart_cache_after_settings_save` | After settings update | — |
+人機協作 (HITL) 偏好：
+- 在涉及「破壞性寫入資料庫」、「線上環境部署」、「敏感金鑰修改」等操作前，AI 必須暫停並明確徵求使用者批准
 
-### Filters (apply_filters)
-| Hook | Purpose | Parameters |
-|------|---------|------------|
-| `cf_smart_cache_supported_post_types` | Filter which post types are cacheable | `$types` |
-| `cf_smart_cache_post_purge_urls` | Filter purge URLs for a post | `$urls`, `$post_id` |
+3. 記憶同步與更新協議 (Memory Sync Protocol)
 
-## Transients Inventory
+為了確保 AI 的記憶在跨對話中永不丟失且持續演進，AI 助手必須遵循以下同步機制：
 
-| Key | Type | TTL | Used By |
-|-----|------|-----|---------|
-| `cf_smart_cache_rate_state` | array | 3600 | Rate limit window |
-| `cf_smart_cache_purge_bucket` | array | 3600 | Token bucket |
-| `cf_smart_cache_purge_queue` | array | 30 | Debounced queue |
-| `cf_smart_cache_recent_logs` | array | 3600 | Rolling 50 logs |
-| `cf_smart_cache_stats_hits` | array | 3600 | Hit counter |
-| `cf_smart_cache_stats_miss` | array | 3600 | Miss counter |
-| `cf_smart_cache_cached_urls` | array | 3600 | URL list (1000 max) |
-| `cf_smart_cache_bypass_reasons` | array | 3600 | Bypass tallies |
-| `cf_smart_cache_last_bypass_reason` | string | 3600 | Last bypass reason |
-| `cf_smart_cache_zone_list` | array | 3600 | Zone dropdown |
-| `cf_smart_cache_zone_plan` | string/array | 86400 | Zone plan ID |
-| `cf_smart_cache_page_rules` | array | 86400 | Page rules list |
+3.1 每日日誌機制 (Daily Logs YYYY-MM-DD.md)
 
-## Developer Preferences (from user)
-- Prefers Chinese (Traditional) for AI communication, English for code
-- Uses MIT license
-- Follows WordPress coding standards
-- Emphasizes nonce verification for all admin actions
-- Prioritizes security (sanitization, capability checks)
-- Dislikes emoji in code/documentation
-- Expects thorough documentation for new features
-- Values backward compatibility
+每次對話結束前，AI 必須將當前的關鍵決策、面臨的問題與下一步計劃，摘要寫入 memory/YYYY-MM-DD.md（以當前日期命名）。
 
-## Recent History
+日誌格式標準：
 
-### [2026-07-05] — Auto-Configuration Wizard + Plan-Aware Configuration (v2.3.2)
-- **What shipped:** Complete wizard in admin.php: config status detection, Page Rule create/update, DNS proxy enable, backup/rollback
-- **Plan-Aware:** `cf_smart_cache_get_zone_plan()` probes CF plan; Free plan limited
-- **Five bug fixes on first attempt:** auth header injection, explicit_cache_control not a Zone setting, missing get_site_domain, DNS name normalization, UUID plan.id handling
-- **Files:** `core.php` (+~400 lines for auto-config), `admin.php` (+~350 lines for wizard UI)
+# 每日工作日誌: YYYY-MM-DD
+* **今日進度**: [簡述完成了哪些功能/修復了哪些 Bug]
+* **關鍵決策**: [例如切換了某個 API、更新了某個 Schema]
+* **遭遇阻礙**: [遇到的技術難題與解決路徑]
+* **明日計劃**: [待續的具體工作事項]
 
-### [2026-07-05] — Rate Limiting (v2.3.0) + Cache Core Optimization (v2.3.1)
-- **Rate limiting:** Sliding window, token bucket, backoff+jitter, adaptive limit, debounced queue, HTTP executor retry layer, admin dashboard
-- **Cache optimization:** Removed legacy purge0/1/2 system, dynamic TTL + stale directives, purge URL caching (wp_cache + post_meta)
 
-### [2026-06-28] — Cache Statistics Dashboard (v2.2.0)
-- 8 new core functions for hits/misses/bypass reasons/cached URLs
-- Dashboard with color-coded hit rate, bypass breakdown, recent URLs
-- Fixed `cf_smart_cache_display_cache_status` undefined fatal error
-- **Lesson:** Old 2026-06-27 entry only had a design doc, no code
+3.2 任務追蹤機制 (tasks.md)
 
-### [2025-09] — Initial Release (v2.1.0)
-- Plugin bootstrap, basic CF API integration, VitePress docs
-- Admin settings page (basic)
+所有的跨對話待辦事項必須維護在 memory/tasks.md 中。
 
-## AI Agent Guidelines
-- Always use WordPress coded patterns and conventions
-- Follow cloudflare-smart-cache code style
-- Respect transient caching to avoid rate limiting
-- Validate all API responses before processing
-- Use WP_Error for error handling, never die() for logic errors
-- Log all cache operations for debugging
-- Follow HTTPS conventions (ALL API calls use HTTPS)
-- Sanitize all user inputs before writing to settings
-- Escape all outputs (esc_html, esc_url, wp_kses)
+任務分為三個看板狀態：[ ] Backlog（待辦）、[>] In Progress（進行中）、[x] Completed（已完成）。
 
-## Known Issues
-- Transients may expire, requiring manual zone refresh
-- Rate limiting may affect bulk operations
-- No built-in cache warming mechanism
-- Token `/token/verify` doesn't return scope list
-- Free plan cannot use `edge_cache_ttl=0`
+當 AI 助手完成一項任務時，必須同步更新 memory/tasks.md，並在日誌中註記。
 
----
+4. 持久技術約定 (Persistent Rules)
 
-**Created:** 2025-09  
-**Last Updated:** 2026-07-05
+Cloudflare API 規範：
+- HTTP Methods：全部使用 HTTPS（wp_remote_get/post/put/delete）
+- Authentication：優先使用 Bearer Token，Email + API Key 作為備選方案
+- Error Handling：使用 cf_smart_cache_validate_api_response() 驗證 JSON 回應
+- Rate Limiting：滑動時窗 (1000 req/5min) + Token Bucket + Exponential Backoff with Jitter
+- 回應處理：檢查 body['success'] 欄位，處理 body['errors'] 陣列
+
+安全優先原則：所有新開發的端點（Endpoints）或微服務，必須在核心邏輯外圍包裹安全認證層，貫徹 AGENTS.md 中的「受控副官防禦」。
+
+零退化 CI/CD 承諾：凡是有新的重大業務邏輯變更，必須同步在 tests/ 下建立對應的斷言測試，以利後續自動化品質飛輪（AgentOps）的集成。
+
+技能包（Agent Skills）優先：解決特定領域問題時（例如：SEO 審計、性能優化、程式碼重構），先檢索本地 .agents/skills/，優先調用已有技能。
+
+已知 API 限制：
+- edge_cache_ttl=0 (Respect Existing Headers) 在 Free plan 不接受，最低 7200s
+- Token /token/verify 不回傳 scope 列表 -> 採 fail-and-tell
+- Partner/Reseller 的 plan.id 可能是 UUID，需 fallback 到 plan.name
