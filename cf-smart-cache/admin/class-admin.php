@@ -492,13 +492,13 @@ class CF_Smart_Cache_Admin
             }
             echo '</select>';
         }
+        echo '</div>';
         printf(
             '<p style="margin-top:8px;"><button type="button" class="button button-small" onclick="cfSmartCacheRefreshZones(\'%s\', \'%s\')">%s</button></p>',
             esc_js($ajax_url),
             esc_js($nonce),
             esc_html__('Refresh Zone List', 'cf-smart-cache')
         );
-        echo '</div>';
     }
 
     public function render_rate_limit_max()
