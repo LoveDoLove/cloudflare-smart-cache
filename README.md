@@ -174,13 +174,11 @@ The plugin provides the following hooks for custom integration:
 
 ## Roadmap
 
-- [ ] Static file caching (CSS/JS/assets)
-- [ ] Custom cache rules (URL pattern-based)
-- [ ] Cache pre-warming (warm cache on post publish)
-- [ ] Webhook support for external purge triggers
-- [ ] Translation files (languages/)
+- [ ] Selective purge by post type (filter which post types trigger cache purge)
+- [ ] Cache hit ratio alert (admin notice when hit rate drops below 30%)
+- [ ] Scheduled full-site purge (WP-Cron daily/weekly)
 - [ ] PHPUnit test framework
-- [ ] REST API endpoints for cache purge
+- [ ] Developer documentation (hooks, filters, custom post type guide)
 
 See the [open issues](https://github.com/LoveDoLove/cloudflare-smart-cache/issues) for a full list of proposed features and known issues.
 
