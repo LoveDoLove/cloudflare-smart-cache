@@ -28,12 +28,11 @@
   - 新的清除範圍篩選 UI
   - 事件觸發次數降低 >50%
 
-#### [Phase 3] 緩存增強功能（低優先級）
+#### [排程] 排程全站清除（低優先級）
 - **狀態**：待決
 - **優先級**：低
 - **說明**：
-  1. **Cache Warming** — 清除後自動對熱門 URL 發送 HEAD 請求
-  2. **排程全站清除** — WP-Cron 每日/每週定時全站清除
+  - WP-Cron 每日/每週定時全站清除
 
 #### [Phase 4b] Plan-Aware Configuration（中優先級）
 - **狀態**：已完成
@@ -175,21 +174,29 @@
 
 ---
 
-## 下次會議待確認事項
+### [Phase 3] 插件底層重構與 Bug 修復（2026-07-15）
+- **狀態**：已完成
+- **優先級**：高
+- **目標**：修復 activation output / plugin search loading Bug，重構單體為 OOP 架構，極簡 UI
+- **設計文檔**：`.opencode/plans/2026-07-15-cf-smart-cache-rewrite.md`
+- **完成內容**：
+  - Bug 1: 移除 `die()` 改為 `exit`，移除所有 `?>` 閉包標籤
+  - Bug 2: Edge cache headers 僅作用於前端（已添加 `is_admin() || DOING_AJAX || REST_REQUEST` 檢查）
+  - 從 2 個巨型文件（core.php 1499行 + admin.php 886行）拆分為 6 個專注 OOP 類
+  - 所有舊函數保留為薄包裝，完全向後兼容
+  - 極簡管理介面：Tab 分頁、AJAX purge、獨立 CSS/JS、WP Settings API
+  - 版本升級：2.3.2 → 2.4.0
 
-### 短期（本週）
-- [ ] 詢問管理員：是否有新功能需求要優先處理
-- [ ] 檢查 WordPress 6.4 測試結果
+## 待執行任務
 
-### 中期（本月）
-- [ ] 建立測試框架
-- [ ] 優化文檔品質
-
-### 長期（本季）
-- [ ] 性能壓力測試
-- [ ] 安全性審計
+| 優先級 | 項目 | 說明 |
+|--------|------|------|
+| 中 | Phase 2: 選擇性清除 by Post Type | 設定頁面 checkbox，過濾哪些 post type 觸發清除 |
+| 中 | Phase 2: Cache Hit Ratio 告警 | 連續 3 小時低於 30% 時 admin notice 提示 |
+| 低 | 排程全站清除 | WP-Cron 每日/每週定時清除 |
+| 中 | PHPUnit 測試框架 | tests/ 目錄 + 10+ 測試案例 |
+| 中 | 開發者文檔 | Hooks/Filters 詳細文檔 |
 
 ---
 
-**最後更新**：2026-07-05
-**下次檢查**：2026-07-06
+**最後更新**：2026-07-15

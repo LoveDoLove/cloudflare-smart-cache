@@ -1,0 +1,16 @@
+.cf-smart-cache-wrap .nav-tab-wrapper { margin-bottom: 1em; }
+.cf-smart-cache-wrap .tab-content { background: #fff; padding: 20px; border: 1px solid #ccd0d4; border-top: none; }
+.cf-sc-status-bar { background: #fff; padding: 12px 16px; margin: 12px 0; border: 1px solid #ccd0d4; border-left: 4px solid #72aee6; display: flex; gap: 24px; align-items: center; }
+.cf-sc-status-item { font-size: 13px; }
+.cf-sc-ok { color: #46b450; font-weight: 600; }
+.cf-sc-err { color: #dc3232; font-weight: 600; }
+.cf-sc-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin: 16px 0; }
+.cf-sc-card { background: #f6f7f7; border: 1px solid #ccd0d4; padding: 20px 16px; text-align: center; border-radius: 3px; }
+.cf-sc-card h3 { margin: 0 0 8px; font-size: 13px; color: #555; text-transform: uppercase; letter-spacing: 0.5px; }
+.cf-sc-card .value { font-size: 28px; font-weight: 600; color: #1d2327; }
+.cf-sc-purge-actions { display: flex; gap: 8px; margin: 16px 0; }
+.cf-sc-success { background: #46b450 !important; color: #fff !important; border-color: #46b450 !important; }
+.cf-sc-ajax-purge { cursor: pointer; }
+.cf-sc-ajax-purge.cf-sc-success { background: #46b450; border-color: #46b450; color: #fff; }
+.cf-sc-log-error td { background: #fbeaea !important; }
+.cf-sc-log-warning td { background: #fef7f1 !important; }

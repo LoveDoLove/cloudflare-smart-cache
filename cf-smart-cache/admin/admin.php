@@ -342,7 +342,15 @@ function cf_smart_cache_options_page_html()
         if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-purge-all')) {
             wp_die(__('Security check failed. Please try again.', 'cf-smart-cache'));
         }
-        cf_smart_cache_purge_all_cache();
+        $result = CF_Smart_Cache_Purge::instance()->purge_all();
+        if (is_wp_error($result)) {
+            $message = 'Error: ' . $result->get_error_message();
+        } else {
+            $message = 'Success: All cache purged from Cloudflare.';
+            cf_smart_cache_log('Manual purge all cache executed');
+            do_action('cf_smart_cache_after_purge_all', $result);
+        }
+        set_transient('cf_smart_cache_notice_' . get_current_user_id(), $message, 45);
     }
     if (isset($_POST['cf_smart_cache_purge_home'])) {
         if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['_wpnonce'])), 'cf-smart-cache-purge-home')) {
@@ -473,48 +481,7 @@ function cf_smart_cache_options_page_html()
     <?php
 }
 
-/**
- * Purge all cache from Cloudflare (admin action)
- */
-function cf_smart_cache_purge_all_cache()
-{
-    $settings  = get_option('cf_smart_cache_settings');
-    $api_token = $settings['cf_smart_cache_api_token'] ?? '';
-    $zone_id   = $settings['cf_smart_cache_zone_id'] ?? '';
-    if (!empty($api_token)) {
-        $headers = [
-            'Authorization' => 'Bearer ' . $api_token,
-            'Content-Type'  => 'application/json'
-        ];
-    } else {
-        set_transient('cf_smart_cache_notice_' . get_current_user_id(), 'Error: API credentials not configured.', 45);
-        return;
-    }
-    if (empty($zone_id)) {
-        set_transient('cf_smart_cache_notice_' . get_current_user_id(), 'Error: Zone ID not configured.', 45);
-        return;
-    }
-    $api_url = "https://api.cloudflare.com/client/v4/zones/{$zone_id}/purge_cache";
-    $response = cf_smart_cache_http_request( $api_url, [
-        'method'  => 'POST',
-        'headers' => $headers,
-        'body'    => json_encode(['purge_everything' => true]),
-        'timeout' => 15,
-    ], 'purge all cache' );
-    if ( is_wp_error( $response ) ) {
-        $message = 'Error: ' . $response->get_error_message();
-    } else {
-        $validated_response = cf_smart_cache_validate_api_response($response, 'purge all cache');
-        if ( is_wp_error( $validated_response ) ) {
-            $message = 'Error: ' . $validated_response->get_error_message();
-        } else {
-            $message = 'Success: All cache purged from Cloudflare.';
-            cf_smart_cache_log('Manual purge all cache executed');
-            do_action('cf_smart_cache_after_purge_all', $validated_response);
-        }
-    }
-    set_transient('cf_smart_cache_notice_' . get_current_user_id(), $message, 45);
-}
+
 
 /**
  * Display cache status in admin UI
@@ -715,9 +682,15 @@ function cf_smart_cache_handle_admin_actions()
         if (!isset($_GET['_wpnonce']) || !wp_verify_nonce(sanitize_text_field(wp_unslash($_GET['_wpnonce'])), 'cf-smart-cache-purge-all')) {
             wp_die(__('Security check failed. Please try again.', 'cf-smart-cache'));
         }
-        cf_smart_cache_purge_all_cache();
+        $result = CF_Smart_Cache_Purge::instance()->purge_all();
         $user_id = get_current_user_id();
-        set_transient("cf_smart_cache_notice_{$user_id}", __('All cache purged successfully', 'cf-smart-cache'), 30);
+        if (is_wp_error($result)) {
+            set_transient("cf_smart_cache_notice_{$user_id}", 'Error: ' . $result->get_error_message(), 45);
+        } else {
+            cf_smart_cache_log('Manual purge all cache executed');
+            do_action('cf_smart_cache_after_purge_all', $result);
+            set_transient("cf_smart_cache_notice_{$user_id}", __('All cache purged successfully', 'cf-smart-cache'), 30);
+        }
         wp_safe_redirect(wp_get_referer() ?: admin_url());
         exit;
     }

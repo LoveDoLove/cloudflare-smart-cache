@@ -4,7 +4,7 @@
  * Plugin Slug:       cf-smart-cache
  * Plugin URI:        https://github.com/LoveDoLove/cloudflare-smart-cache
  * Description:       Powerful all-in-one Cloudflare cache solution: edge HTML caching, automatic purging on post/category changes, advanced admin controls, API token support, and comprehensive logging for WordPress.
- * Version:           2.3.2
+ * Version:           2.5.0
  * Author:            LoveDoLove
  * Author URI:        https://github.com/LoveDoLove
  * License:           MIT
@@ -18,7 +18,7 @@
  * Network:           false
  */
 
-defined('ABSPATH') or die('No script kiddies please!');
+defined('ABSPATH') || exit;
 
 // ===================== Plugin Setup & Activation =====================
 
@@ -69,12 +69,18 @@ register_deactivation_hook(__FILE__, 'cf_smart_cache_deactivate');
 
 // ===================== Load Core and Admin Code =====================
 
-// Load core/shared logic (cache, API, hooks, utilities)
+// Load core/shared logic (cache, API, purge, hooks, utilities)
+require_once plugin_dir_path(__FILE__) . 'includes/class-cache-manager.php';
+require_once plugin_dir_path(__FILE__) . 'includes/class-api-client.php'; // <-- API client class
+require_once plugin_dir_path(__FILE__) . 'includes/class-purge-manager.php'; // <-- Purge manager class
+require_once plugin_dir_path(__FILE__) . 'includes/class-stats-manager.php'; // <-- Stats manager class
+require_once plugin_dir_path(__FILE__) . 'includes/class-rate-limiter.php'; // <-- Rate limiter class
 require_once plugin_dir_path(__FILE__) . 'includes/core.php'; // <-- Core logic
 
 // Load admin-specific code (settings page, admin UI, admin hooks)
 if (is_admin()) {
-    require_once plugin_dir_path(__FILE__) . 'admin/admin.php'; // <-- Admin logic
+    require_once plugin_dir_path(__FILE__) . 'admin/class-admin.php'; // <-- Admin class
+    CF_Smart_Cache_Admin::instance()->init();
 }
 
 // ===================== End of main plugin file =====================

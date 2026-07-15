@@ -1,0 +1,23 @@
+{
+    "name": "lovedolove/cloudflare-smart-cache",
+    "description": "Cloudflare Smart Cache WordPress Plugin",
+    "type": "wordpress-plugin",
+    "license": "MIT",
+    "require": {
+        "php": ">=7.4"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^9.6",
+        "yoast/phpunit-polyfills": "^1.0"
+    },
+    "autoload": {
+        "classmap": [
+            "cf-smart-cache/includes/",
+            "cf-smart-cache/admin/"
+        ]
+    },
+    "scripts": {
+        "test": "phpunit",
+        "test-coverage": "phpunit --coverage-html tests/coverage"
+    }
+}
