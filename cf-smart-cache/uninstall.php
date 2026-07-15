@@ -34,7 +34,7 @@ function cf_smart_cache_uninstall_cleanup()
     delete_transient('cf_smart_cache_zone_plan');
     delete_transient('cf_smart_cache_page_rules');
     delete_transient('cf_smart_cache_rate_limit');
-    delete_transient('cf_smart_cache_recent_logs');
+    delete_option('cf_smart_cache_recent_logs');
 
     // Clean up user-specific transients and notices
     $wpdb->query(
@@ -62,4 +62,3 @@ function cf_smart_cache_uninstall_cleanup()
 
 // Perform cleanup
 cf_smart_cache_uninstall_cleanup();
-?>

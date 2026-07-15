@@ -175,6 +175,19 @@
 
 ---
 
+### [Phase 3] 插件底層重構與 Bug 修復（2026-07-15）
+- **狀態**：已完成
+- **優先級**：高
+- **目標**：修復 activation output / plugin search loading Bug，重構單體為 OOP 架構，極簡 UI
+- **設計文檔**：`.opencode/plans/2026-07-15-cf-smart-cache-rewrite.md`
+- **完成內容**：
+  - Bug 1: 移除 `die()` 改為 `exit`，移除所有 `?>` 閉包標籤
+  - Bug 2: Edge cache headers 僅作用於前端（已添加 `is_admin() || DOING_AJAX || REST_REQUEST` 檢查）
+  - 從 2 個巨型文件（core.php 1499行 + admin.php 886行）拆分為 6 個專注 OOP 類
+  - 所有舊函數保留為薄包裝，完全向後兼容
+  - 極簡管理介面：Tab 分頁、AJAX purge、獨立 CSS/JS、WP Settings API
+  - 版本升級：2.3.2 → 2.4.0
+
 ## 下次會議待確認事項
 
 ### 短期（本週）
