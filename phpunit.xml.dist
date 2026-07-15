@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="tests/bootstrap.php"
+         colors="true"
+         cacheResultFile="tests/.phpunit.cache">
+    <testsuites>
+        <testsuite name="Cloudflare Smart Cache Test Suite">
+            <directory>tests</directory>
+        </testsuite>
+    </testsuites>
+    <coverage>
+        <include>
+            <directory>cf-smart-cache/includes</directory>
+            <directory>cf-smart-cache/admin</directory>
+        </include>
+    </coverage>
+</phpunit>

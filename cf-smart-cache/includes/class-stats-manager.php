@@ -112,4 +112,26 @@ class CF_Smart_Cache_Stats {
             delete_transient($key);
         }
     }
+
+    public function check_hit_rate_alert() {
+        $hits  = (int) get_transient($this->keys()['hits']);
+        $misses = (int) get_transient($this->keys()['misses']);
+        $total = $hits + $misses;
+        if ($total < 50) {
+            return false;
+        }
+        $rate = ($hits / $total) * 100;
+        if ($rate >= 30) {
+            delete_option('cf_smart_cache_low_rate_count');
+            return false;
+        }
+        $count = (int) get_option('cf_smart_cache_low_rate_count', 0);
+        $count++;
+        update_option('cf_smart_cache_low_rate_count', $count, false);
+        return $count >= 3;
+    }
+
+    public function dismiss_hit_rate_alert() {
+        delete_option('cf_smart_cache_low_rate_count');
+    }
 }

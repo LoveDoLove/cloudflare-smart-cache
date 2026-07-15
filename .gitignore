@@ -409,3 +409,6 @@ generate_mcp_yaml.py
 BLANK_README.md
 website/.vitepress/cache
 website/.vitepress/dist
+/vendor/
+/composer.lock
+tests/test-output.txt

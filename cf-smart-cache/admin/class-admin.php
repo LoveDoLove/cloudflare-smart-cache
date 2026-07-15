@@ -29,6 +29,8 @@ class CF_Smart_Cache_Admin
         add_action('wp_ajax_cf_smart_cache_fetch_zones', array($this, 'ajax_fetch_zones'));
         add_action('wp_ajax_cf_smart_cache_auto_config', array($this, 'ajax_auto_config'));
         add_action('wp_ajax_cf_smart_cache_save_settings', array($this, 'ajax_save_settings'));
+        add_action('wp_ajax_cf_smart_cache_dismiss_rate_alert', array($this, 'ajax_dismiss_rate_alert'));
+        add_action('cf_smart_cache_scheduled_purge', array($this, 'handle_scheduled_purge'));
         add_action('admin_notices', array($this, 'display_notices'));
     }
 
@@ -161,6 +163,14 @@ class CF_Smart_Cache_Admin
             'cf_smart_cache',
             'cf_smart_cache_purge_section'
         );
+
+        add_settings_field(
+            'scheduled_purge',
+            __('Scheduled Full Purge', 'cf-smart-cache'),
+            array($this, 'render_scheduled_purge'),
+            'cf_smart_cache',
+            'cf_smart_cache_purge_section'
+        );
     }
 
     public function sanitize_settings($input)
@@ -197,6 +207,11 @@ class CF_Smart_Cache_Admin
         }
         if (isset($input['purge_post_types']) && is_array($input['purge_post_types'])) {
             $sanitized['purge_post_types'] = array_map('sanitize_key', $input['purge_post_types']);
+        }
+        $allowed_schedules = array('', 'daily', 'weekly');
+        if (isset($input['scheduled_purge']) && in_array($input['scheduled_purge'], $allowed_schedules, true)) {
+            $sanitized['scheduled_purge'] = $input['scheduled_purge'];
+            $this->update_scheduled_purge_cron($input['scheduled_purge']);
         }
         do_action('cf_smart_cache_after_settings_save', $sanitized, $input);
         return $sanitized;
@@ -572,6 +587,19 @@ class CF_Smart_Cache_Admin
         printf('<p class="description">%s</p>', esc_html__('Select which post types trigger cache purge on publish/update/delete. Unchecked types will be skipped.', 'cf-smart-cache'));
     }
 
+    public function render_scheduled_purge()
+    {
+        $options = $this->get_settings();
+        $value   = isset($options['scheduled_purge']) ? $options['scheduled_purge'] : '';
+        $schedules = array('' => __('Disabled', 'cf-smart-cache'), 'daily' => __('Daily', 'cf-smart-cache'), 'weekly' => __('Weekly', 'cf-smart-cache'));
+        echo '<select name="cf_smart_cache_settings[scheduled_purge]">';
+        foreach ($schedules as $k => $v) {
+            printf('<option value="%s" %s>%s</option>', esc_attr($k), selected($value, $k, false), esc_html($v));
+        }
+        echo '</select>';
+        printf('<p class="description">%s</p>', esc_html__('Automatically purge all Cloudflare cache on a schedule. Requires zone ID to be configured.', 'cf-smart-cache'));
+    }
+
     public function admin_bar_menu($wp_admin_bar)
     {
         if (!is_admin() && !is_user_logged_in()) {
@@ -790,6 +818,17 @@ class CF_Smart_Cache_Admin
         if (empty($zone_id)) {
             echo '<div class="notice notice-error"><p><strong>Cloudflare Smart Cache:</strong> ' . esc_html__('Cloudflare Zone ID is missing. Please select a zone in the plugin settings.', 'cf-smart-cache') . '</p></div>';
         }
+
+        // Hit rate alert
+        if (CF_Smart_Cache_Stats::instance()->check_hit_rate_alert()) {
+            printf(
+                '<div class="notice notice-warning is-dismissible"><p><strong>%s:</strong> %s <a href="%s">%s</a></p></div>',
+                esc_html__('CF Smart Cache', 'cf-smart-cache'),
+                esc_html__('Cache hit rate has been below 30% for an extended period. Check your Cloudflare configuration or consider adjusting cache rules.', 'cf-smart-cache'),
+                esc_url(admin_url('options-general.php?page=cf_smart_cache&tab=tools')),
+                esc_html__('View Tools', 'cf-smart-cache')
+            );
+        }
     }
 
     public function ajax_purge_all()
@@ -921,5 +960,34 @@ class CF_Smart_Cache_Admin
             'zones'    => $zones,
             'selected' => $selected,
         ));
+    }
+
+    public function ajax_dismiss_rate_alert()
+    {
+        if (!current_user_can('manage_options') || !wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['nonce'] ?? '')), 'cf_smart_cache_ajax_nonce')) {
+            wp_send_json_error(array('message' => __('Security check failed.', 'cf-smart-cache')));
+        }
+        CF_Smart_Cache_Stats::instance()->dismiss_hit_rate_alert();
+        wp_send_json_success(array('message' => 'Dismissed'));
+    }
+
+    private function update_scheduled_purge_cron($schedule)
+    {
+        $hook = 'cf_smart_cache_scheduled_purge';
+        wp_clear_scheduled_hook($hook);
+        if (!empty($schedule)) {
+            wp_schedule_event(time(), $schedule, $hook);
+        }
+    }
+
+    public function handle_scheduled_purge()
+    {
+        $settings = $this->get_settings();
+        $zone_id  = $settings['cf_smart_cache_zone_id'] ?? '';
+        if (empty($zone_id)) {
+            return;
+        }
+        CF_Smart_Cache_Purge::instance()->purge_all();
+        cf_smart_cache_log('Scheduled full cache purge executed');
     }
 }
