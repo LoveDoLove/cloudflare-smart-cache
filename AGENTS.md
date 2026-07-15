@@ -14,6 +14,9 @@ projects/cloudflare-smart-cache/
 ├── memory/
 │   ├── tasks.md              # 任務追蹤
 │   └── YYYY-MM-DD.md         # 每日工作日誌
+├── docs/
+│   └── developer-hooks.md    # 開發者 Hooks/Filter 文檔
+├── tests/                    # PHPUnit 測試框架（10 tests）
 └── .opencode/plans/          # 執行計劃文件
 ```
 
@@ -29,6 +32,10 @@ projects/cloudflare-smart-cache/
 - **code-reviewer** / **requesting-code-review** — 代碼審查
 - **fullstack-guardian** / **secure-code-guardian** — 安全開發
 - **devops-engineer** — CI/CD / Docker / K8s 配置
+- **codebase-memory** — 知識圖譜代碼查詢
+- **ui-ux-pro-max** — UI/UX 設計
+- **dispatching-parallel-agents** — 並行子代理調度
+- **verification-before-completion** — 完成前驗證
 
 ## 3. 技能調用原則
 
@@ -41,3 +48,17 @@ projects/cloudflare-smart-cache/
 1. **受控副官防禦** — JWT/ACL 系統隔離，不信 Prompt
 2. **宣告式工具解耦** — MCP/JSON 介面，模型與工具分離
 3. **軌跡即真理** — OpenTelemetry 標準追蹤
+
+## 5. 當前專案完成狀態
+
+所有 v2.4.0 計劃功能已完成：
+- 單體重構為 6 個 OOP 類，54+ 包裝函數保持向後相容
+- AJAX 管理介面（零 jQuery 依賴、無頁面刷新）
+- 邊緣 HTML 快取 + 安全標頭 + 動態 TTL
+- 自動清除（文章/分類/選單/主題變更）
+- 選擇性清除 by Post Type
+- Cache Hit Ratio 告警
+- 排程全站清除（WP-Cron 每日/每週）
+- PHPUnit 測試框架（10 tests, 22 assertions）
+- 開發者文檔（docs/developer-hooks.md）
+- API 速率限制 + 指數退避

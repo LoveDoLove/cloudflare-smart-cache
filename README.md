@@ -30,6 +30,7 @@
   </p>
 </div>
 
+<!-- TABLE OF CONTENTS -->
 <details>
   <summary>Table of Contents</summary>
   <ol>
@@ -57,6 +58,8 @@
   </ol>
 </details>
 
+<!-- ABOUT THE PROJECT -->
+
 ## About The Project
 
 Cloudflare Smart Cache is a WordPress plugin that integrates Cloudflare's edge caching with automatic cache purging. It serves HTML pages from Cloudflare's edge for non-logged-in visitors, automatically purges cache on content changes, and provides a full AJAX admin interface with zero page reloads.
@@ -65,21 +68,26 @@ Key features:
 
 - **Edge HTML Caching** — Serve HTML pages from Cloudflare's edge cache for non-logged-in visitors with configurable TTL (stale-while-revalidate, stale-if-error)
 - **Automatic Cache Purging** — Purge Cloudflare cache when posts, categories, terms, menus, or themes change
+- **Selective Purge by Post Type** — Choose which post types trigger cache purging in Settings
+- **Cache Hit Rate Alert** — Admin warning when hit rate stays below 30% for 3+ consecutive checks
+- **Scheduled Full Purge** — WP-Cron driven daily or weekly automatic full cache clearance
 - **AJAX Admin Interface** — All operations (save, purge, refresh, auto-config) use inline vanilla JS with zero page reloads
-- **Auto-Configuration Wizard** — One-click setup of Page Rules (Cache Everything), DNS proxy (orange cloud), and zone settings, with backup/rollback
+- **Auto-Configuration Wizard** — One-click setup of Page Rules (Cache Everything), DNS Proxy (orange cloud), and zone settings, with backup/rollback
 - **Security Headers** — X-Content-Type-Options, X-Frame-Options, HSTS, X-XSS-Protection, Referrer-Policy
 - **Cache Statistics** — Track hits, misses, hit rate, bypass reasons, and cached URLs
 - **Rate Limiting** — Sliding-window governor with exponential back-off and adaptive limiting on 429 responses
 - **API Token Authentication** — Secure Bearer token for Cloudflare API access (supports Profile API Tokens)
 - **Activity Log** — View recent 50 log entries from plugin operations
+- **Developer Hooks** — 7 documented actions and filters for custom integration
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
 ### Built With
 
-- [WordPress](https://wordpress.org/)
-- [Cloudflare API](https://api.cloudflare.com/)
-- [PHP](https://www.php.net/)
+- [![WordPress][Wordpress]][Wordpress-url]
+- [![PHP][PHP]][PHP-url]
+- [![Cloudflare API][Cloudflare]][Cloudflare-url]
+- [![PHPUnit][PHPUnit]][PHPUnit-url]
 
 ### Key Improvements in v2.4.0
 
@@ -88,8 +96,15 @@ Key features:
 - Bug fixes: activation "headers already sent", plugin search infinite loading, zone list pagination (`per_page=50`)
 - Backward compatible: all 54 existing function names preserved as thin wrappers
 - Minimalist admin UI with tab switching, AJAX settings save, AJAX purge, inline notifications
+- **Selective purge by post type** — Settings checkbox group to filter which post types trigger purge
+- **Cache hit rate alert** — Admin warning notice when hit rate < 30% for 3+ consecutive checks (50+ total requests minimum)
+- **Scheduled full-site purge** — Daily or Weekly WP-Cron option in Settings
+- **PHPUnit test framework** — 10 tests, 22 assertions across 3 test classes
+- **Developer hooks documentation** — `docs/developer-hooks.md` with all actions, filters, class reference, and JS API
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- GETTING STARTED -->
 
 ## Getting Started
 
@@ -127,6 +142,8 @@ To use Cloudflare Smart Cache, you need a WordPress site and a Cloudflare accoun
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- USAGE EXAMPLES -->
+
 ## Usage
 
 After activation and configuration:
@@ -145,6 +162,9 @@ After activation and configuration:
 - Access the zone list via AJAX with inline Refresh button
 - Configure TTL values for different content types
 - Configure rate limiting parameters
+- **Purge on Post Types** — checkboxes to select which post types trigger automatic cache purge
+- **Scheduled Full Purge** — select Disabled, Daily, or Weekly
+- View **Cache Hit Rate Alert** when hit rate drops below 30%
 
 ### Tools Tab
 - View current configuration status (Page Rule, Origin Cache Control, DNS Proxy, Backup)
@@ -165,24 +185,56 @@ After activation and configuration:
 
 The plugin provides the following hooks for custom integration:
 
-- `cf_smart_cache_ttl` — Filter TTL values (returns array of TTL settings)
-- `cf_smart_cache_purge_urls` — Filter URLs to purge on content changes
-- `cf_smart_cache_after_settings_save` — Action after settings are saved
-- `cf_smart_cache_after_purge_all` — Action after full cache purge
+| Hook | Type | Description |
+|------|------|-------------|
+| `cf_smart_cache_ttl` | Filter | Modify TTL values for cached pages |
+| `cf_smart_cache_purge_urls` | Filter | Filter URLs to purge on content changes |
+| `cf_smart_cache_post_purge_urls` | Filter | Filter related URLs based on post relationships |
+| `cf_smart_cache_bypass_cookies` | Filter | Filter cookies that trigger cache bypass |
+| `cf_smart_cache_supported_post_types` | Filter | Filter which post types support cache purge |
+| `cf_smart_cache_after_settings_save` | Action | After settings are saved |
+| `cf_smart_cache_after_purge_all` | Action | After full cache purge |
+
+See `docs/developer-hooks.md` for complete reference with parameters and examples.
+
+### Running Tests
+
+```sh
+composer install
+vendor/bin/phpunit
+```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- ROADMAP -->
+
 ## Roadmap
 
-- [ ] Selective purge by post type (filter which post types trigger cache purge)
-- [ ] Cache hit ratio alert (admin notice when hit rate drops below 30%)
-- [ ] Scheduled full-site purge (WP-Cron daily/weekly)
-- [ ] PHPUnit test framework
-- [ ] Developer documentation (hooks, filters, custom post type guide)
+### Phase 1 (Completed)
+- [x] Edge HTML caching with dynamic TTL (stale-while-revalidate, stale-if-error)
+- [x] Security headers (X-Content-Type-Options, HSTS, CSP, etc.)
+- [x] Automatic cache purge on content changes (posts, terms, menus, themes)
+- [x] Purge URL generation with hash-based caching (wp_cache + post_meta)
+- [x] API rate limiting with sliding window and exponential backoff
+
+### Phase 2 (Completed)
+- [x] Selective purge by post type
+- [x] Cache hit rate alert (admin notice when rate < 30%)
+- [x] Scheduled full-site purge (daily/weekly WP-Cron)
+- [x] PHPUnit test framework (10 tests, 22 assertions)
+- [x] Developer hooks documentation
+
+### Future
+- [ ] Static file caching extensions
+- [ ] Cache warming on content publish
+- [ ] Multi-zone support
+- [ ] Webhook-based purge triggers
 
 See the [open issues](https://github.com/LoveDoLove/cloudflare-smart-cache/issues) for a full list of proposed features and known issues.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTRIBUTING -->
 
 ## Contributing
 
@@ -198,19 +250,23 @@ Don't forget to give the project a star! Thanks again!
 4. Push to the Branch (`git push origin feature/AmazingFeature`)
 5. Open a Pull Request
 
-<p align="right">(<a href="#readme-top">back to top</a>)</p>
-
 ### Top contributors:
 
 <a href="https://github.com/LoveDoLove/cloudflare-smart-cache/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=LoveDoLove/cloudflare-smart-cache" alt="contrib.rocks image" />
 </a>
 
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- LICENSE -->
+
 ## License
 
 Distributed under the MIT License. See `LICENSE` for more information.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- CONTACT -->
 
 ## Contact
 
@@ -220,14 +276,19 @@ Project Link: [https://github.com/LoveDoLove/cloudflare-smart-cache](https://git
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
+<!-- ACKNOWLEDGMENTS -->
+
 ## Acknowledgments
 
 - [WordPress Plugin Handbook](https://developer.wordpress.org/plugins/)
 - [Cloudflare API Documentation](https://api.cloudflare.com/)
 - [Best README Template](https://github.com/othneildrew/Best-README-Template)
-- [Cloudflare PHP API Client](https://github.com/cloudflare/cloudflare-php)
+- [PHPUnit](https://phpunit.de/)
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+<!-- MARKDOWN LINKS & IMAGES -->
+<!-- https://www.markdownguide.org/basic-syntax/#reference-style-links -->
 
 [contributors-shield]: https://img.shields.io/github/contributors/LoveDoLove/cloudflare-smart-cache.svg?style=for-the-badge
 [contributors-url]: https://github.com/LoveDoLove/cloudflare-smart-cache/graphs/contributors
@@ -239,6 +300,12 @@ Project Link: [https://github.com/LoveDoLove/cloudflare-smart-cache](https://git
 [issues-url]: https://github.com/LoveDoLove/cloudflare-smart-cache/issues
 [license-shield]: https://img.shields.io/github/license/LoveDoLove/cloudflare-smart-cache.svg?style=for-the-badge
 [license-url]: https://github.com/LoveDoLove/cloudflare-smart-cache/blob/master/LICENSE
-[linkedin-shield]: https://img.shields.io/badge/-LinkedIn-black.svg?style=for-the-badge&logo=linkedin&colorB=555
-[linkedin-url]: https://linkedin.com/in/
 [product-screenshot]: images/logo.png
+[Wordpress]: https://img.shields.io/badge/WordPress-21759B?style=for-the-badge&logo=wordpress&logoColor=white
+[Wordpress-url]: https://wordpress.org/
+[PHP]: https://img.shields.io/badge/PHP-777BB4?style=for-the-badge&logo=php&logoColor=white
+[PHP-url]: https://www.php.net/
+[Cloudflare]: https://img.shields.io/badge/Cloudflare-F38020?style=for-the-badge&logo=cloudflare&logoColor=white
+[Cloudflare-url]: https://api.cloudflare.com/
+[PHPUnit]: https://img.shields.io/badge/PHPUnit-366488?style=for-the-badge&logo=php&logoColor=white
+[PHPUnit-url]: https://phpunit.de/

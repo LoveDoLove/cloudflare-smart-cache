@@ -16,13 +16,32 @@
 
 ### 程式碼統計 (v2.4.0)
 
-- **PHP 總行數**: 2,033 行（11 個活躍檔案，不含舊版 admin.php 846 行）
-- **類**: 6 個（API Client / Cache Manager / Purge Manager / Stats Manager / Rate Limiter + Admin）
-- **包裝函數**: 54 個（core.php 中的薄包裝，保持向後兼容）
-- **架構**: 從單體 core.php（1499行）+ admin.php（913行）遷移至 OOP 類結構
-- **AJAX Endpoints**: 5 個（purge_all / purge_homepage / fetch_zones / auto_config / save_settings）
-- **JS**: inline vanilla XMLHttpRequest + 24 行 admin.js（jQuery 增強，可選）
+- **PHP 總行數**: ~3,828 行（13 個活躍檔案，含 6 個類 + 54 個包裝函數 + 1 個 OOP admin + 3 個 view）
+- **類**: 6 個（`CF_Smart_Cache_API` / `CF_Smart_Cache_Cache` / `CF_Smart_Cache_Purge` / `CF_Smart_Cache_Stats` / `CF_Smart_Cache_Rate_Limiter` + `CF_Smart_Cache_Admin`）
+- **包裝函數**: 54 個（`core.php` 中的薄包裝，保持向後兼容）
+- **架構**: 從單體 `core.php`（1499行）+ `admin.php`（913行）遷移至 OOP 類結構
+- **AJAX Endpoints**: 5 個（`purge_all` / `purge_homepage` / `fetch_zones` / `auto_config` / `save_settings`）
+- **JS**: inline vanilla XMLHttpRequest + 1 行 admin.js（jQuery 增強為空，核心使用 inline）
 - **CSS**: 14 行 admin.css
+
+### Hooks 與過濾器
+
+| 類型 | 名稱 | 用途 |
+|------|------|------|
+| Action | `cf_smart_cache_after_settings_save` | 設定保存後觸發 |
+| Action | `cf_smart_cache_after_purge_all` | 全站清除後觸發 |
+| Filter | `cf_smart_cache_ttl` | 修改 TTL 值 |
+| Filter | `cf_smart_cache_purge_urls` | 過濾清除 URL 列表 |
+| Filter | `cf_smart_cache_post_purge_urls` | 基於文章關係過濾 URL |
+| Filter | `cf_smart_cache_bypass_cookies` | 過濾繞過快取的 Cookie |
+| Filter | `cf_smart_cache_supported_post_types` | 過濾支援的文章類型 |
+
+### 測試框架
+
+- **框架**: PHPUnit 9.6 + yoast/phpunit-polyfills
+- **測試類**: 3 個（`TestCacheManagerTest` / `TestPurgeManagerTest` / `TestStatsManagerTest`）
+- **測試數**: 10 個 / 22 個 assertions
+- **覆蓋範圍**: Cache Manager、Purge Manager、Stats Manager
 
 ## 2. 使用者偏好與互動慣例 (User Preferences)
 
@@ -45,7 +64,8 @@
 
 **專案慣例**:
 - API Token 絕不存儲在程式碼中
-- 使用 Transients 儲存短期快取資料
+- 使用 Options 儲存活動日誌（`cf_smart_cache_recent_logs`），非 Transients（避免 object cache flush 丟失）
+- 使用 Transients 儲存短期統計資料
 - 重視向後相容性，舊函數保留為薄包裝
 
 ## 3. 記憶同步與更新協議 (Memory Sync Protocol)
