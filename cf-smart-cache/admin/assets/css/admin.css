@@ -12,3 +12,5 @@
 .cf-sc-success { background: #46b450 !important; color: #fff !important; border-color: #46b450 !important; }
 .cf-sc-ajax-purge { cursor: pointer; }
 .cf-sc-ajax-purge.cf-sc-success { background: #46b450; border-color: #46b450; color: #fff; }
+.cf-sc-log-error td { background: #fbeaea !important; }
+.cf-sc-log-warning td { background: #fef7f1 !important; }

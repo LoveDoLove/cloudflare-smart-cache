@@ -30,6 +30,7 @@ class CF_Smart_Cache_Admin
         add_action('wp_ajax_cf_smart_cache_auto_config', array($this, 'ajax_auto_config'));
         add_action('wp_ajax_cf_smart_cache_save_settings', array($this, 'ajax_save_settings'));
         add_action('wp_ajax_cf_smart_cache_dismiss_rate_alert', array($this, 'ajax_dismiss_rate_alert'));
+        add_action('wp_ajax_cf_smart_cache_fetch_logs', array($this, 'ajax_fetch_logs'));
         add_action('cf_smart_cache_scheduled_purge', array($this, 'handle_scheduled_purge'));
         add_action('admin_notices', array($this, 'display_notices'));
     }
@@ -969,6 +970,18 @@ class CF_Smart_Cache_Admin
         }
         CF_Smart_Cache_Stats::instance()->dismiss_hit_rate_alert();
         wp_send_json_success(array('message' => 'Dismissed'));
+    }
+
+    public function ajax_fetch_logs()
+    {
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(array('message' => __('Insufficient permissions.', 'cf-smart-cache')));
+        }
+        $recent_logs = get_option('cf_smart_cache_recent_logs', array());
+        if (!is_array($recent_logs)) {
+            $recent_logs = array();
+        }
+        wp_send_json_success(array('logs' => array_reverse($recent_logs)));
     }
 
     private function update_scheduled_purge_cron($schedule)
