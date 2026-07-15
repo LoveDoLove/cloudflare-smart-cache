@@ -778,6 +778,7 @@ class CF_Smart_Cache_Admin
         $sanitized = $this->sanitize_settings($input);
         update_option('cf_smart_cache_settings', $sanitized);
         $this->settings = $sanitized;
+        cf_smart_cache_log('Settings saved');
         wp_send_json_success(array('message' => __('Settings saved.', 'cf-smart-cache')));
     }
 
@@ -864,6 +865,7 @@ class CF_Smart_Cache_Admin
 
         if ('backup' === $action_type) {
             $count = cf_smart_cache_backup_config();
+            cf_smart_cache_log(sprintf('Configuration backup created (%d of 3 slots)', $count));
             $results['message'] = sprintf(__('Backup saved (%d of 3 slots).', 'cf-smart-cache'), $count);
             wp_send_json_success($results);
         }
@@ -920,6 +922,7 @@ class CF_Smart_Cache_Admin
                 }
             }
 
+            cf_smart_cache_log(sprintf('Auto-config applied: page_rule=%s, dns_proxy=%s', $results['page_rule'] ?? 'skipped', $results['dns_proxy'] ?? 'skipped'));
             $results['message'] = 'Apply completed';
             wp_send_json_success($results);
         }
@@ -929,6 +932,7 @@ class CF_Smart_Cache_Admin
             if ($index >= 0) {
                 cf_smart_cache_backup_config();
                 $r = cf_smart_cache_restore_backup($index);
+                cf_smart_cache_log(sprintf('Configuration rollback to backup #%d completed', $index));
                 $results['message'] = 'Rollback completed';
                 $results['details'] = $r;
             } else {
@@ -947,6 +951,7 @@ class CF_Smart_Cache_Admin
         }
         $selected = sanitize_text_field(wp_unslash($_POST['selected'] ?? ''));
         $zones    = cf_smart_cache_fetch_zones();
+        cf_smart_cache_log(is_wp_error($zones) ? 'Zone refresh failed: ' . $zones->get_error_message() : sprintf('Zone list refreshed (%d zones)', count($zones)));
         if (is_wp_error($zones)) {
             wp_send_json_error(array(
                 'message' => $zones->get_error_message(),
@@ -965,6 +970,7 @@ class CF_Smart_Cache_Admin
             wp_send_json_error(array('message' => __('Security check failed.', 'cf-smart-cache')));
         }
         CF_Smart_Cache_Stats::instance()->dismiss_hit_rate_alert();
+        cf_smart_cache_log('Cache hit rate alert dismissed');
         wp_send_json_success(array('message' => 'Dismissed'));
     }
 
