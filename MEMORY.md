@@ -47,10 +47,11 @@
 
 ## 2. 使用者偏好與互動慣例 (User Preferences)
 
-**溝通語言**: 預設使用繁體中文。
+**溝通語言**: 預設使用 繁體中文 (Traditional Chinese) 進行所有對話、架構解釋與日誌記錄（除程式碼註解、變數命名與技術文檔採用英文）。
 
 **程式碼風格**:
 - 追求極簡與健壯性，嚴禁過度設計
+- 必須符合內置技能包 karpathy-guidelines 的編碼行為準則
 - 優先使用 WordPress 原生函數與 WP 編碼標準
 - 所有用戶輸入須 sanitize，所有輸出須 escape
 - Nonce 驗證所有表單和 AJAX 請求
@@ -71,25 +72,70 @@
 - 使用 Transients 儲存短期統計資料
 - 重視向後相容性，舊函數保留為薄包裝
 
+**人機協作 (HITL) 偏好**:
+- 在涉及「破壞性寫入資料庫」、「線上環境部署」、「敏感金鑰修改」等操作前，AI 必須暫停並明確徵求使用者批准。
+
 ## 3. 記憶同步與更新協議 (Memory Sync Protocol)
 
-### 3.1 每日日誌機制
+為了確保 AI 的記憶在跨對話中永不丟失且持續演進，AI 助手必須遵循以下同步機制：
 
-每次對話結束前，AI 必須將當前的關鍵決策、面臨的問題與下一步計劃摘要寫入 `memory/YYYY-MM-DD.md`。
+### 3.1 每日日誌機制 (Daily Logs YYYY-MM-DD.md)
 
-### 3.2 任務追蹤機制
+每次對話結束前，AI 必須將當前的關鍵決策、面臨的問題與下一步計劃摘要寫入 `memory/YYYY-MM-DD.md`（以當前日期命名）。
 
-所有跨對話待辦事項維護在 `memory/tasks.md` 中。任務分為三個狀態：`[ ]` Backlog、`[>]` In Progress、`[x]` Completed。
+日誌格式標準：
+
+```
+# 每日工作日誌: YYYY-MM-DD
+* **今日進度**: [簡述完成了哪些功能/修復了哪些 Bug]
+* **關鍵決策**: [例如切換了某個 API、更新了某個 Schema]
+* **遭遇阻礙**: [遇到的技術難題與解決路徑]
+* **明日計劃**: [待續的具體工作事項]
+```
+
+### 3.2 任務追蹤機制 (tasks.md)
+
+所有跨對話待辦事項必須維護在 `memory/tasks.md` 中。
+
+任務分為三個看板狀態：`[ ]` Backlog（待辦）、`[>]` In Progress（進行中）、`[x]` Completed（已完成）。
+
+當 AI 助手完成一項任務時，必須同步更新 `memory/tasks.md`，並在日誌中註記。
 
 ## 4. 持久技術約定 (Persistent Rules)
 
-**Cloudflare API 規範**:
+**安全優先原則**：所有新開發的端點（Endpoints）或微服務，必須在核心邏輯外圍包裹安全認證層，貫徹 AGENTS.md 中的「受控副官防禦」。
+
+**零退化 CI/CD 承諾**：凡是有新的重大業務邏輯變更，必須同步在 `tests/` 下建立對應的斷言測試，以利後續自動化品質飛輪（AgentOps）的集成。
+
+**技能包（Agent Skills）優先**：解決特定領域問題時（例如：SEO 審計、性能優化、程式碼重構），先檢索本地 `.agents/skills/`，優先調用已有技能。
+
+**Cloudflare API 規範**：
 - HTTP Methods：全部使用 HTTPS
 - Authentication：優先使用 Bearer Token
 - Error Handling：使用 `CF_Smart_Cache_API::validate_api_response()`
 - Rate Limiting：滑動時窗 + Token Bucket + Exponential Backoff
 
-**已知 API 限制**:
+**已知 API 限制**：
 - `edge_cache_ttl=0` 在 Free plan 不接受，最低 7200s
 - Token `/token/verify` 不回傳 scope 列表 → 採 fail-and-tell
 - Partner/Reseller 的 `plan.id` 可能是 UUID，需 fallback 到 `plan.name`
+
+## 5. 工具狀態與技能索引 (Tool State & Skill Index)
+
+本倉庫的工具安裝狀態自動維護在 `memory/tools-state.json`，AI 每次對話會自動讀取並更新。
+
+已註冊工具列表（共 7 項）：
+- karpathy-guidelines (skill) — 編碼行為準則
+- skillx (skill) — 技能市場搜尋與調用，每項任務都應載入
+- ui-ux-pro-max (skill) — UI/UX 設計智慧：84 種風格、192 種色板、74 種字體
+- context7 (mcp) — 即時程式庫文件查詢
+- codebase-memory-mcp (mcp) — 程式碼知識圖譜
+- opencode-wakatime (plugin) — WakaTime 使用追蹤
+- superpowers (framework) — 代理人技能框架與開發方法論
+
+如需重新檢測或安裝，請執行 repo 根目錄的 `init.ps1`：
+```
+.\init.ps1              # 逐項詢問安裝
+.\init.ps1 --yes        # 全自動安裝
+.\init.ps1 --no-install # 只偵測狀態
+```
